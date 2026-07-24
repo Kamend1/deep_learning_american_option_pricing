@@ -1,0 +1,174 @@
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Packaging / build outputs
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# ============================================================
+# Virtual environments
+# ============================================================
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ============================================================
+# Jupyter
+# ============================================================
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+.profile_default/
+.ipython/
+
+# Optional notebook autosaves / temporary exports
+*.nbconvert.ipynb
+*.html.tmp
+
+# ============================================================
+# Testing, coverage, type checking, linting
+# ============================================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+.hypothesis/
+
+# ============================================================
+# Environment variables and secrets
+# ============================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+credentials/
+
+# ============================================================
+# IDEs and editors
+# ============================================================
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# ============================================================
+# Operating-system files
+# ============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================
+# Logs and temporary files
+# ============================================================
+*.log
+logs/
+tmp/
+temp/
+.cache/
+*.tmp
+
+# ============================================================
+# Generated datasets and caches
+# Keep only documentation / placeholders under version control
+# ============================================================
+data/raw/
+data/generated/
+data/processed/
+data/cache/
+data/interim/
+
+!data/README.md
+!data/.gitkeep
+!data/sample/
+!data/sample/**
+
+# Common large data formats
+*.parquet
+*.feather
+*.arrow
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.pkl
+*.pickle
+
+# ============================================================
+# Trained models, checkpoints, and experiment artifacts
+# ============================================================
+models/
+checkpoints/
+artifacts/
+runs/
+mlruns/
+wandb/
+tensorboard/
+
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.joblib
+
+!models/README.md
+!models/.gitkeep
+!checkpoints/README.md
+!checkpoints/.gitkeep
+!artifacts/README.md
+!artifacts/.gitkeep
+
+# ============================================================
+# Generated reports / local exports
+# Keep source markdown, notebooks, figures, and final report files
+# unless they are placed in the ignored export folder below.
+# ============================================================
+reports/exports/
+outputs/
+results/cache/
+
+# ============================================================
+# Local academic papers / copyrighted PDFs
+# Keep references.bib and literature notes, but not local PDF copies
+# ============================================================
+references/papers/
+literature/papers/
+
+# ============================================================
+# QuantLib / compiler-specific local artifacts
+# ============================================================
+*.dll
+*.dylib
+*.lib
+*.a
+*.o
+*.obj
+
+# ============================================================
+# Miscellaneous
+# ============================================================
+*.bak
+*.orig
