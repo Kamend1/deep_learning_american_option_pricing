@@ -349,3 +349,155 @@ __all__.extend(
         "create_multitask_loader",
     ]
 )
+
+
+class IntegratedMultiHeadDataset(Dataset[dict[str, object]]):
+    """Tensor dataset for the final four-head static American put model."""
+
+    def __init__(
+        self,
+        frame: pd.DataFrame,
+        *,
+        scaler: StandardScaler,
+        feature_columns: Sequence[str] = FEATURE_COLUMNS,
+        id_column: str = "sample_id",
+        weight_column: str | None = None,
+        floor_residual_column: str = "normalized_floor_residual",
+        direct_price_column: str = "normalized_american_price",
+        continuation_column: str = "normalized_continuation_value",
+        exercise_column: str = "exercise_now",
+        european_column: str = "normalized_european_price",
+        intrinsic_column: str = "normalized_intrinsic_value",
+    ) -> None:
+        required = [
+            *feature_columns,
+            id_column,
+            floor_residual_column,
+            direct_price_column,
+            continuation_column,
+            exercise_column,
+            european_column,
+            intrinsic_column,
+        ]
+        if weight_column is not None:
+            required.append(weight_column)
+        missing = [column for column in required if column not in frame.columns]
+        if missing:
+            raise ValueError(f"Integrated dataset is missing columns: {missing}")
+
+        feature_values = frame.loc[:, feature_columns].to_numpy(dtype=np.float64)
+        floor_residual = frame[floor_residual_column].to_numpy(dtype=np.float64)
+        direct_price = frame[direct_price_column].to_numpy(dtype=np.float64)
+        continuation = frame[continuation_column].to_numpy(dtype=np.float64)
+        exercise = frame[exercise_column].to_numpy(dtype=np.float64)
+        european = frame[european_column].to_numpy(dtype=np.float64)
+        intrinsic = frame[intrinsic_column].to_numpy(dtype=np.float64)
+
+        arrays = (
+            feature_values,
+            floor_residual,
+            direct_price,
+            continuation,
+            exercise,
+            european,
+            intrinsic,
+        )
+        if not all(np.isfinite(array).all() for array in arrays):
+            raise ValueError("Integrated dataset contains NaN or infinite values.")
+        if not np.isin(exercise, [0.0, 1.0]).all():
+            raise ValueError("exercise targets must be binary.")
+        if any(np.any(array < 0.0) for array in (
+            floor_residual,
+            direct_price,
+            continuation,
+            european,
+            intrinsic,
+        )):
+            raise ValueError("Normalized pricing targets cannot be negative.")
+
+        scaled = scaler.transform(feature_values).astype(np.float32, copy=False)
+        self.features = torch.from_numpy(scaled)
+        self.floor_residual_targets = torch.from_numpy(
+            floor_residual.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.direct_price_targets = torch.from_numpy(
+            direct_price.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.continuation_targets = torch.from_numpy(
+            continuation.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.exercise_targets = torch.from_numpy(
+            exercise.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.normalized_european = torch.from_numpy(
+            european.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.normalized_intrinsic = torch.from_numpy(
+            intrinsic.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.row_ids = frame[id_column].to_numpy(copy=True)
+        self.sample_weights = None
+        if weight_column is not None:
+            weights = frame[weight_column].to_numpy(dtype=np.float64)
+            if not np.isfinite(weights).all() or np.any(weights < 0.0):
+                raise ValueError("Sample weights must be finite and non-negative.")
+            self.sample_weights = torch.from_numpy(
+                weights.astype(np.float32, copy=False)
+            ).unsqueeze(1)
+
+        self.feature_columns = tuple(feature_columns)
+        self.id_column = id_column
+        self.weight_column = weight_column
+
+    def __len__(self) -> int:
+        return len(self.floor_residual_targets)
+
+    def __getitem__(self, index: int) -> dict[str, object]:
+        row_id = self.row_ids[index]
+        if isinstance(row_id, np.generic):
+            row_id = row_id.item()
+        item: dict[str, object] = {
+            "features": self.features[index],
+            "floor_residual_target": self.floor_residual_targets[index],
+            "direct_price_target": self.direct_price_targets[index],
+            "continuation_target": self.continuation_targets[index],
+            "exercise_target": self.exercise_targets[index],
+            "normalized_european": self.normalized_european[index],
+            "normalized_intrinsic": self.normalized_intrinsic[index],
+            "row_id": row_id,
+        }
+        if self.sample_weights is not None:
+            item["sample_weight"] = self.sample_weights[index]
+        return item
+
+
+def create_integrated_multihead_loader(
+    dataset: IntegratedMultiHeadDataset,
+    *,
+    config: LoaderConfig,
+    shuffle: bool,
+    drop_last: bool = False,
+) -> DataLoader:
+    """Create a deterministic DataLoader for the final integrated model."""
+
+    generator = torch.Generator()
+    generator.manual_seed(config.seed)
+    return DataLoader(
+        dataset,
+        batch_size=config.batch_size,
+        shuffle=shuffle,
+        num_workers=config.num_workers,
+        pin_memory=config.pin_memory and torch.cuda.is_available(),
+        drop_last=drop_last,
+        worker_init_fn=_seed_worker if config.num_workers else None,
+        generator=generator,
+        persistent_workers=config.num_workers > 0,
+    )
+
+
+__all__.extend(
+    [
+        "IntegratedMultiHeadDataset",
+        "create_integrated_multihead_loader",
+    ]
+)

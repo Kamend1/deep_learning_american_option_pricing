@@ -47,3 +47,17 @@ __all__ += [
     "build_continuation_features",
 ]
 
+
+from src.models.integrated_multihead_pricer import (
+    IntegratedAmericanPutMultiHeadMLP,
+    IntegratedMultiHeadConfig,
+    copy_compatible_backbone_weights,
+    reconstruct_integrated_outputs,
+)
+
+__all__ += [
+    "IntegratedAmericanPutMultiHeadMLP",
+    "IntegratedMultiHeadConfig",
+    "copy_compatible_backbone_weights",
+    "reconstruct_integrated_outputs",
+]

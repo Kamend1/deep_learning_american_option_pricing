@@ -37,3 +37,21 @@ __all__ = [
     "read_parquet_components",
     "save_feature_scaler",
 ]
+
+from src.data.multihead_targets import (
+    INTEGRATED_TARGET_COLUMNS,
+    add_integrated_targets,
+    validate_integrated_targets,
+)
+from src.data.torch_datasets import (
+    IntegratedMultiHeadDataset,
+    create_integrated_multihead_loader,
+)
+
+__all__ += [
+    "INTEGRATED_TARGET_COLUMNS",
+    "IntegratedMultiHeadDataset",
+    "add_integrated_targets",
+    "create_integrated_multihead_loader",
+    "validate_integrated_targets",
+]

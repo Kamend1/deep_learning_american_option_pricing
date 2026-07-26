@@ -72,3 +72,29 @@ __all__ += [
     "validate_contract_separation",
 ]
 
+
+from src.training.multihead_losses import (
+    IntegratedMultiHeadLoss,
+    MultiHeadLossConfig,
+    MultiHeadLossWeights,
+    multihead_loss_preset,
+)
+from src.training.multihead_loops import (
+    IntegratedTrainingConfig,
+    fit_integrated_multihead_model,
+    predict_integrated_multihead_model,
+    run_integrated_epoch,
+    set_integrated_seed,
+)
+
+__all__ += [
+    "IntegratedMultiHeadLoss",
+    "IntegratedTrainingConfig",
+    "MultiHeadLossConfig",
+    "MultiHeadLossWeights",
+    "fit_integrated_multihead_model",
+    "multihead_loss_preset",
+    "predict_integrated_multihead_model",
+    "run_integrated_epoch",
+    "set_integrated_seed",
+]

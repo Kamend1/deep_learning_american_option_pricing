@@ -310,16 +310,43 @@ Input(5)
 
 The output activation enforces non-negative normalized prices. The direct MLP is the control model that later premium and constrained architectures must outperform.
 
-### 6. Planned neural models
+### 6. Comparative model framework
 
-The comparative framework includes:
+The project compares:
 
 1. European Black–Scholes proxy;
 2. direct MLP price model;
 3. early-exercise-premium MLP;
 4. financially constrained premium MLP;
 5. multi-task price and exercise model;
-6. neural Least-Squares Monte Carlo extension.
+6. classical Least-Squares Monte Carlo;
+7. neural Least-Squares Monte Carlo;
+8. final integrated static multi-head model.
+
+### 7. Final integrated static model
+
+The final static architecture uses one shared option-state representation and four specialized heads:
+
+```text
+Input(5)
+→ Shared backbone
+   ├── Financial-floor residual head
+   ├── Direct American-price head
+   ├── Continuation-value head
+   └── Exercise-classification head
+```
+
+The authoritative price is reconstructed as
+
+\[
+\widehat V_A
+=
+\max(V_E,I)
++
+\operatorname{Softplus}(\widehat R_F).
+\]
+
+The continuation and exercise heads provide two independent paths to the stopping decision. Their disagreement is measured and penalized during training. The integrated static model remains separate from neural LSM because neural LSM consumes simulated paths and time-indexed states rather than one static contract vector.
 
 ---
 
@@ -396,17 +423,27 @@ deep_learning_american_option_pricing/
 │   ├── 05_early_exercise_premium_model.ipynb
 │   ├── 06_exercise_boundary_analysis.ipynb
 │   ├── 07_neural_longstaff_schwartz.ipynb
-│   └── 08_final_evaluation.ipynb
+│   ├── 08_final_multihead_model.ipynb
+│   └── 09_final_evaluation.ipynb
 │
 ├── docs/
 │   ├── 01_option_pricing_foundations.md
 │   ├── 02_american_option_data_generation.md
 │   ├── 03_dataset_analysis_and_validation.md
 │   ├── 04_direct_mlp_pricer.md
-│   └── ...
+│   ├── 05_early_exercise_premium_model.md
+│   ├── 06_exercise_boundary_analysis.md
+│   ├── 07_neural_longstaff_schwartz.md
+│   ├── 08_final_multihead_model.md
+│   ├── 09_final_evaluation.md
+│   ├── RESULTS_REQUIRED.md
+│   └── FINAL_WRITEUP_CHECKLIST.md
 │
 ├── scripts/
-│   └── generate_production_dataset.py
+│   ├── generate_production_dataset.py
+│   ├── train_final_multihead.py
+│   ├── validate_production_project.py
+│   └── build_final_results.py
 │
 ├── src/
 │   ├── pricing/
@@ -421,13 +458,15 @@ deep_learning_american_option_pricing/
 │   │   ├── production_generation.py
 │   │   ├── dataset_validation.py
 │   │   ├── splitting.py
+│   │   ├── multihead_targets.py
 │   │   └── torch_datasets.py
 │   │
 │   ├── models/
 │   │   ├── direct_pricer.py
 │   │   ├── premium_pricer.py
 │   │   ├── multitask_pricer.py
-│   │   └── neural_longstaff_schwartz.py
+│   │   ├── neural_longstaff_schwartz.py
+│   │   └── integrated_multihead_pricer.py
 │   │
 │   ├── training/
 │   │   ├── loops.py
@@ -435,7 +474,9 @@ deep_learning_american_option_pricing/
 │   │   ├── losses.py
 │   │   ├── multitask_losses.py
 │   │   ├── multitask_loops.py
-│   │   └── lsm_training.py
+│   │   ├── lsm_training.py
+│   │   ├── multihead_losses.py
+│   │   └── multihead_loops.py
 │   │
 │   └── evaluation/
 │       ├── regression_metrics.py
@@ -443,9 +484,18 @@ deep_learning_american_option_pricing/
 │       ├── model_comparison.py
 │       ├── classification_metrics.py
 │       ├── exercise_boundary.py
-│       └── lsm_comparison.py
+│       ├── lsm_comparison.py
+│       ├── internal_consistency.py
+│       ├── integrated_model_comparison.py
+│       ├── artifact_registry.py
+│       ├── final_project_evaluation.py
+│       ├── hypothesis_testing.py
+│       └── final_reporting.py
 │
 ├── tests/
+│   ├── integration/
+│   │   ├── test_static_multihead_pipeline.py
+│   │   └── test_full_project_pipeline.py
 │   ├── test_black_scholes.py
 │   ├── test_binomial_tree.py
 │   ├── test_data_generation.py
@@ -458,7 +508,12 @@ deep_learning_american_option_pricing/
 │   ├── test_gbm_simulation.py
 │   ├── test_longstaff_schwartz.py
 │   ├── test_neural_longstaff_schwartz.py
-│   └── test_lsm_comparison.py
+│   ├── test_lsm_comparison.py
+│   ├── test_integrated_multihead_pricer.py
+│   ├── test_multihead_losses.py
+│   ├── test_internal_consistency.py
+│   ├── test_integrated_model_comparison.py
+│   └── test_final_project_evaluation.py
 │
 ├── data/
 │   ├── generated/          # ignored by Git
@@ -471,13 +526,14 @@ deep_learning_american_option_pricing/
 │   ├── literature_matrix.md
 │   └── citation_audit.md
 │
+├── pytest.ini
 ├── requirements.txt
 ├── .gitignore
 ├── LICENSE
 └── README.md
 ```
 
-Some files shown above are planned and will be added as the project progresses.
+Notebook 09 and the final artifact-audit, aggregation, and write-up skeleton are implemented. Empirical tables remain pending until the production runs are completed.
 
 ---
 
@@ -550,12 +606,24 @@ The notebooks form one sequential academic workflow.
 - evaluates policies on independent held-out paths and contracts;
 - reports OOD, multi-seed, stopping-policy, and runtime results.
 
-### Notebook 08 — Planned final evaluation
+### Notebook 08 — Final integrated static multi-head model
 
-- consolidates all static and simulation-based models;
-- applies the static surrogates to the shared LSM contract grid;
-- decides the remaining hypotheses;
-- presents final conclusions and limitations.
+- trains one shared backbone with residual, direct-price, continuation, and exercise heads;
+- compares balanced, pricing-focused, and decision-focused loss configurations;
+- evaluates scratch and optional Step 6 warm-start training;
+- quantifies internal price and exercise consistency;
+- reconstructs the exercise boundary;
+- saves the authoritative constrained-price checkpoint.
+
+### Notebook 09 — Final evaluation and project synthesis
+
+- audits all required production artifacts;
+- aligns static and simulation-based model results;
+- consolidates pricing, boundary, consistency, OOD, and runtime tables;
+- applies predefined H1–H6 decision rules;
+- provides placeholders for literature synthesis and final conclusions;
+- exports the final write-up inputs and project-level result manifests;
+- runs safely in placeholder mode before the expensive production experiments.
 
 ---
 
@@ -650,6 +718,30 @@ python -m pytest -q \
     tests/test_lsm_comparison.py
 ```
 
+Run the final integrated-model tests:
+
+```bash
+python -m pytest -q \
+    tests/test_integrated_multihead_pricer.py \
+    tests/test_multihead_losses.py \
+    tests/test_internal_consistency.py \
+    tests/test_integrated_model_comparison.py
+```
+
+Run the miniature end-to-end integration pipeline:
+
+```bash
+python -m pytest -q -m integration
+```
+
+Run tests explicitly marked as slow:
+
+```bash
+python -m pytest -q -m slow
+```
+
+The default `pytest` configuration excludes `integration` and `slow` tests so routine validation remains fast. Full production generation and full model training are not ordinary unit-test workloads.
+
 The pricing tests should pass before generating large datasets. A neural network trained on an incorrect pricing engine will learn the implementation error rather than correct it.
 
 ---
@@ -673,6 +765,48 @@ The script:
 
 The generated files are intentionally excluded from Git.
 
+Train one final multi-head configuration non-interactively:
+
+```bash
+python scripts/train_final_multihead.py --config balanced
+```
+
+Available presets are `balanced`, `pricing_focused`, and `decision_focused`. A Step 6-compatible warm-start run can be launched with:
+
+```bash
+python scripts/train_final_multihead.py \
+    --config decision_focused \
+    --architecture step6_compatible \
+    --warm-start-checkpoint artifacts/multitask_model/best_multitask_pricer.pt
+```
+
+---
+
+
+## Final production validation and report build
+
+Before the final academic write-up, validate the complete artifact chain:
+
+```bash
+python scripts/validate_production_project.py --deep
+```
+
+Build the consolidated Notebook 09 input tables:
+
+```bash
+python scripts/build_final_results.py --strict
+```
+
+During the architecture-only phase, both scripts support a safe pending state:
+
+```bash
+python scripts/validate_production_project.py --allow-missing
+python scripts/build_final_results.py
+```
+
+Notebook 09 never fabricates unavailable results. Missing evidence is marked as
+`PENDING` or produces an `Inconclusive` hypothesis decision.
+
 ---
 
 ## Execution order
@@ -687,10 +821,11 @@ Run the notebooks sequentially:
 05_early_exercise_premium_model.ipynb
 06_exercise_boundary_analysis.ipynb
 07_neural_longstaff_schwartz.ipynb
-08_final_evaluation.ipynb
+08_final_multihead_model.ipynb
+09_final_evaluation.ipynb
 ```
 
-At the current stage, Notebooks 01–07 and their supporting implementation modules are prepared. Full-profile data generation, model training, and empirical evaluation still need to be executed in the target environment before the final conclusions are locked.
+At the current stage, Notebooks 01–08 and their supporting implementation modules are prepared. Full-profile data generation, model training, out-of-domain evaluation, and Notebook 09 still need to be executed before the final conclusions are locked.
 
 ---
 
@@ -787,8 +922,13 @@ The literature review covers direct supervised pricing, recurrent architectures,
 - classical Longstaff–Schwartz with independent policy and valuation paths;
 - amortized neural continuation-value policy by exercise index;
 - LSM pricing, confidence-interval, stopping-policy, OOD, and runtime comparisons;
-- notebooks and Markdown documentation for Steps 1–7;
-- unit tests for pricing, data, neural models, exercise boundaries, simulation, and LSM logic.
+- final integrated four-head static architecture;
+- multi-objective loss presets and internal-consistency penalties;
+- scratch and Step 6-compatible warm-start support;
+- non-interactive final-model training script;
+- tiered pytest configuration with unit and integration markers;
+- notebooks and Markdown documentation for Steps 1–8;
+- unit and integration tests for pricing, data, neural models, exercise boundaries, simulation, LSM, and the final static pipeline.
 
 ### Pending execution and empirical validation
 
@@ -798,11 +938,22 @@ The literature review covers direct supervised pricing, recurrent architectures,
 - financial-violation analysis from trained-model predictions;
 - CPU and GPU inference-speed benchmark.
 
-### Planned
+### Completed final architecture
 
-- final-profile execution of the premium, multi-task, and neural LSM experiments;
-- cross-model evaluation on one shared contract grid;
-- final H1–H6 hypothesis decisions;
+- Notebook 09 final-evaluation skeleton and Markdown twin;
+- artifact registry with safe pending-state handling;
+- production validation and final-results build scripts;
+- predefined H1–H6 decision framework;
+- full-project integration smoke test;
+- final results and academic-writeup checklists.
+
+### Planned execution and writing
+
+- final-profile execution of all static and neural LSM experiments;
+- final integrated-model loss and warm-start ablations;
+- cross-model evaluation on aligned static and LSM contract grids;
+- evidence-based H1–H6 decisions in Notebook 09;
+- section conclusions and notebook-to-notebook handoffs;
 - consolidated academic paper and conclusions.
 
 ---
