@@ -1,18 +1,14 @@
-"""Cox–Ross–Rubinstein lattice pricing for European and American options.
+"""Cox–Ross–Rubinstein pricing for European and American vanilla options.
 
 The implementation uses one-dimensional NumPy arrays during backward induction,
-which keeps memory usage at O(steps) rather than constructing a full tree.
-
-The tree supports:
-- European calls and puts;
-- American calls and puts;
-- continuous dividend yield;
-- zero maturity;
-- zero volatility through a deterministic discrete-exercise calculation.
+which keeps memory usage at O(steps). In addition to a scalar pricing function,
+the module exposes root-node diagnostics needed to label the American exercise
+decision in the synthetic dataset.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import math
 from typing import Literal
 
@@ -21,6 +17,29 @@ import numpy as np
 
 OptionType = Literal["call", "put"]
 ExerciseStyle = Literal["european", "american"]
+
+
+@dataclass(frozen=True, slots=True)
+class CRRPriceResult:
+    """Root-node diagnostics returned by the CRR pricing engine.
+
+    Attributes
+    ----------
+    price:
+        Present option value after applying the exercise rule.
+    intrinsic_value:
+        Immediate exercise payoff at the root node.
+    continuation_value:
+        Discounted expected value of continuing for one time step at the root.
+    exercise_now:
+        Whether immediate exercise is optimal at the root node. This is always
+        ``False`` for European options before maturity.
+    """
+
+    price: float
+    intrinsic_value: float
+    continuation_value: float
+    exercise_now: bool
 
 
 def _validate_inputs(
@@ -35,7 +54,7 @@ def _validate_inputs(
     option_type: str,
     exercise_style: str,
 ) -> tuple[OptionType, ExerciseStyle]:
-    """Validate inputs and return normalized string parameters."""
+    """Validate pricing parameters and normalize string arguments."""
 
     numeric_values = {
         "spot": spot,
@@ -62,10 +81,8 @@ def _validate_inputs(
     if volatility < 0.0:
         raise ValueError(f"volatility cannot be negative; received {volatility}.")
 
-    if isinstance(steps, bool) or not isinstance(steps, int):
+    if isinstance(steps, bool) or not isinstance(steps, int) or steps <= 0:
         raise ValueError(f"steps must be a positive integer; received {steps!r}.")
-    if steps <= 0:
-        raise ValueError(f"steps must be greater than zero; received {steps}.")
 
     normalized_option_type = option_type.strip().lower()
     normalized_exercise_style = exercise_style.strip().lower()
@@ -81,10 +98,7 @@ def _validate_inputs(
             f"received {exercise_style!r}."
         )
 
-    return (
-        normalized_option_type,  # type: ignore[return-value]
-        normalized_exercise_style,  # type: ignore[return-value]
-    )
+    return normalized_option_type, normalized_exercise_style  # type: ignore[return-value]
 
 
 def _intrinsic_value(
@@ -95,13 +109,18 @@ def _intrinsic_value(
 ) -> np.ndarray | float:
     """Return call or put intrinsic value."""
 
+    prices = np.asarray(underlying_price)
     if option_type == "call":
-        return np.maximum(np.asarray(underlying_price) - strike, 0.0)
+        values = np.maximum(prices - strike, 0.0)
+    else:
+        values = np.maximum(strike - prices, 0.0)
 
-    return np.maximum(strike - np.asarray(underlying_price), 0.0)
+    if np.ndim(underlying_price) == 0:
+        return float(values)
+    return values
 
 
-def _deterministic_option_price(
+def _deterministic_result(
     *,
     spot: float,
     strike: float,
@@ -111,27 +130,53 @@ def _deterministic_option_price(
     steps: int,
     option_type: OptionType,
     exercise_style: ExerciseStyle,
-) -> float:
-    """Price the zero-volatility case on the discrete exercise grid."""
+) -> CRRPriceResult:
+    """Handle the zero-volatility case by deterministic backward induction."""
 
+    delta_t = time_to_maturity / steps
+    discount_factor = math.exp(-risk_free_rate * delta_t)
     times = np.linspace(0.0, time_to_maturity, steps + 1)
-    underlying_path = spot * np.exp(
-        (risk_free_rate - dividend_yield) * times
+    path = spot * np.exp((risk_free_rate - dividend_yield) * times)
+
+    option_value = float(
+        _intrinsic_value(path[-1], strike=strike, option_type=option_type)
     )
-    intrinsic_values = _intrinsic_value(
-        underlying_path,
-        strike=strike,
-        option_type=option_type,
+    root_continuation = option_value
+
+    for current_step in range(steps - 1, -1, -1):
+        continuation = discount_factor * option_value
+        exercise = float(
+            _intrinsic_value(
+                path[current_step],
+                strike=strike,
+                option_type=option_type,
+            )
+        )
+        if current_step == 0:
+            root_continuation = continuation
+        option_value = (
+            max(exercise, continuation)
+            if exercise_style == "american"
+            else continuation
+        )
+
+    root_intrinsic = float(
+        _intrinsic_value(spot, strike=strike, option_type=option_type)
     )
-    discounted_values = np.exp(-risk_free_rate * times) * intrinsic_values
+    exercise_now = (
+        exercise_style == "american"
+        and root_intrinsic >= root_continuation - 1e-12
+    )
 
-    if exercise_style == "european":
-        return float(discounted_values[-1])
+    return CRRPriceResult(
+        price=max(float(option_value), 0.0),
+        intrinsic_value=root_intrinsic,
+        continuation_value=max(float(root_continuation), 0.0),
+        exercise_now=exercise_now,
+    )
 
-    return float(np.max(discounted_values))
 
-
-def crr_option_price(
+def crr_option_diagnostics(
     *,
     spot: float,
     strike: float,
@@ -142,40 +187,11 @@ def crr_option_price(
     option_type: str,
     exercise_style: str,
     dividend_yield: float = 0.0,
-) -> float:
-    """Price a vanilla option with a Cox–Ross–Rubinstein tree.
+) -> CRRPriceResult:
+    """Price an option and return root-node exercise diagnostics.
 
-    Parameters
-    ----------
-    spot:
-        Current underlying price.
-    strike:
-        Option strike.
-    time_to_maturity:
-        Remaining maturity in years.
-    risk_free_rate:
-        Continuously compounded annual risk-free rate.
-    volatility:
-        Annualized volatility.
-    steps:
-        Number of CRR time steps.
-    option_type:
-        ``"call"`` or ``"put"``.
-    exercise_style:
-        ``"european"`` or ``"american"``.
-    dividend_yield:
-        Continuously compounded annual dividend yield.
-
-    Returns
-    -------
-    float
-        Present option value.
-
-    Raises
-    ------
-    ValueError
-        If parameters are invalid or the requested step count produces an
-        invalid risk-neutral probability.
+    The American ``exercise_now`` label compares root intrinsic value with the
+    discounted continuation value before the maximum operator is applied.
     """
 
     normalized_option_type, normalized_exercise_style = _validate_inputs(
@@ -190,16 +206,27 @@ def crr_option_price(
         exercise_style=exercise_style,
     )
 
-    if time_to_maturity == 0.0:
-        intrinsic = _intrinsic_value(
+    root_intrinsic = float(
+        _intrinsic_value(
             spot,
             strike=strike,
             option_type=normalized_option_type,
         )
-        return float(intrinsic)
+    )
+
+    if time_to_maturity == 0.0:
+        return CRRPriceResult(
+            price=root_intrinsic,
+            intrinsic_value=root_intrinsic,
+            continuation_value=0.0,
+            exercise_now=(
+                normalized_exercise_style == "american"
+                and root_intrinsic > 0.0
+            ),
+        )
 
     if volatility == 0.0:
-        return _deterministic_option_price(
+        return _deterministic_result(
             spot=spot,
             strike=strike,
             time_to_maturity=time_to_maturity,
@@ -211,46 +238,29 @@ def crr_option_price(
         )
 
     delta_t = time_to_maturity / steps
-    sqrt_delta_t = math.sqrt(delta_t)
-
-    up_factor = math.exp(volatility * sqrt_delta_t)
+    up_factor = math.exp(volatility * math.sqrt(delta_t))
     down_factor = 1.0 / up_factor
-
-    growth_factor = math.exp(
-        (risk_free_rate - dividend_yield) * delta_t
-    )
-    denominator = up_factor - down_factor
-    risk_neutral_probability = (
-        growth_factor - down_factor
-    ) / denominator
+    growth_factor = math.exp((risk_free_rate - dividend_yield) * delta_t)
+    probability = (growth_factor - down_factor) / (up_factor - down_factor)
 
     tolerance = 1e-14
-    if (
-        risk_neutral_probability < -tolerance
-        or risk_neutral_probability > 1.0 + tolerance
-    ):
+    if probability < -tolerance or probability > 1.0 + tolerance:
         raise ValueError(
-            "The selected parameters and step count produce an invalid "
-            "CRR risk-neutral probability "
-            f"p={risk_neutral_probability:.8f}. Increase 'steps' or revise "
-            "the parameter combination."
+            "The selected parameters and step count produce an invalid CRR "
+            f"risk-neutral probability p={probability:.8f}. Increase 'steps' "
+            "or revise the parameter combination."
         )
 
-    risk_neutral_probability = min(
-        max(risk_neutral_probability, 0.0),
-        1.0,
-    )
+    probability = min(max(probability, 0.0), 1.0)
     discount_factor = math.exp(-risk_free_rate * delta_t)
 
     up_moves = np.arange(steps + 1, dtype=np.float64)
     down_moves = steps - up_moves
-
     terminal_underlying = (
         spot
         * np.power(up_factor, up_moves)
         * np.power(down_factor, down_moves)
     )
-
     option_values = np.asarray(
         _intrinsic_value(
             terminal_underlying,
@@ -260,25 +270,25 @@ def crr_option_price(
         dtype=np.float64,
     )
 
+    root_continuation = float("nan")
+
     for current_step in range(steps - 1, -1, -1):
-        option_values = discount_factor * (
-            risk_neutral_probability * option_values[1:]
-            + (1.0 - risk_neutral_probability) * option_values[:-1]
+        continuation_values = discount_factor * (
+            probability * option_values[1:]
+            + (1.0 - probability) * option_values[:-1]
         )
 
-        if normalized_exercise_style == "american":
-            current_up_moves = np.arange(
-                current_step + 1,
-                dtype=np.float64,
-            )
-            current_down_moves = current_step - current_up_moves
+        if current_step == 0:
+            root_continuation = float(continuation_values[0])
 
+        if normalized_exercise_style == "american":
+            current_up_moves = np.arange(current_step + 1, dtype=np.float64)
+            current_down_moves = current_step - current_up_moves
             current_underlying = (
                 spot
                 * np.power(up_factor, current_up_moves)
                 * np.power(down_factor, current_down_moves)
             )
-
             exercise_values = np.asarray(
                 _intrinsic_value(
                     current_underlying,
@@ -287,10 +297,37 @@ def crr_option_price(
                 ),
                 dtype=np.float64,
             )
+            option_values = np.maximum(continuation_values, exercise_values)
+        else:
+            option_values = continuation_values
 
-            option_values = np.maximum(option_values, exercise_values)
+    price = max(float(option_values[0]), 0.0)
+    exercise_now = (
+        normalized_exercise_style == "american"
+        and root_intrinsic >= root_continuation - 1e-12
+    )
 
-    return max(float(option_values[0]), 0.0)
+    return CRRPriceResult(
+        price=price,
+        intrinsic_value=root_intrinsic,
+        continuation_value=max(root_continuation, 0.0),
+        exercise_now=exercise_now,
+    )
 
 
-__all__ = ["crr_option_price"]
+def crr_option_price(**kwargs: object) -> float:
+    """Return only the scalar CRR option price.
+
+    This wrapper preserves the simple public API used by Notebook 01. Use
+    :func:`crr_option_diagnostics` when continuation value or the exercise label
+    is required.
+    """
+
+    return crr_option_diagnostics(**kwargs).price  # type: ignore[arg-type]
+
+
+__all__ = [
+    "CRRPriceResult",
+    "crr_option_diagnostics",
+    "crr_option_price",
+]
