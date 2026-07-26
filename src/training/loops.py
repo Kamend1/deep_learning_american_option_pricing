@@ -68,16 +68,40 @@ def set_global_seed(seed: int, *, deterministic: bool = True) -> None:
 def _move_batch(
     batch: dict[str, object],
     device: torch.device,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
     features = batch["features"]
     target = batch["target"]
     if not isinstance(features, torch.Tensor) or not isinstance(target, torch.Tensor):
         raise TypeError("DataLoader batches must contain tensor features and targets.")
+    sample_weight = batch.get("sample_weight")
+    if sample_weight is not None and not isinstance(sample_weight, torch.Tensor):
+        raise TypeError("sample_weight must be a tensor when supplied.")
     return (
         features.to(device, non_blocking=True),
         target.to(device, non_blocking=True),
+        (
+            sample_weight.to(device, non_blocking=True)
+            if isinstance(sample_weight, torch.Tensor)
+            else None
+        ),
     )
 
+
+
+def _calculate_loss(
+    loss_fn: nn.Module,
+    prediction: torch.Tensor,
+    target: torch.Tensor,
+    sample_weight: torch.Tensor | None,
+) -> torch.Tensor:
+    if sample_weight is None:
+        return loss_fn(prediction, target)
+    try:
+        return loss_fn(prediction, target, sample_weight=sample_weight)
+    except TypeError as exc:
+        raise TypeError(
+            "A weighted dataset requires a loss function accepting sample_weight."
+        ) from exc
 
 def train_one_epoch(
     model: nn.Module,
@@ -98,7 +122,7 @@ def train_one_epoch(
     use_amp = scaler is not None and scaler.is_enabled()
 
     for batch in loader:
-        features, target = _move_batch(batch, device)
+        features, target, sample_weight = _move_batch(batch, device)
         optimizer.zero_grad(set_to_none=True)
 
         with torch.autocast(
@@ -107,7 +131,9 @@ def train_one_epoch(
             enabled=use_amp,
         ):
             prediction = model(features)
-            loss = loss_fn(prediction, target)
+            loss = _calculate_loss(
+                loss_fn, prediction, target, sample_weight
+            )
 
         if scaler is not None:
             scaler.scale(loss).backward()
@@ -153,9 +179,9 @@ def evaluate_one_epoch(
     observations = 0
 
     for batch in loader:
-        features, target = _move_batch(batch, device)
+        features, target, sample_weight = _move_batch(batch, device)
         prediction = model(features)
-        loss = loss_fn(prediction, target)
+        loss = _calculate_loss(loss_fn, prediction, target, sample_weight)
         batch_size = target.shape[0]
         total_loss += float(loss.item()) * batch_size
         total_absolute_error += float(torch.abs(prediction - target).sum().item())
@@ -297,7 +323,7 @@ def predict_regression_model(
     predictions: list[np.ndarray] = []
 
     for batch in loader:
-        features, target = _move_batch(batch, device)
+        features, target, _ = _move_batch(batch, device)
         prediction = model(features)
         row_ids = batch["row_id"]
         if isinstance(row_ids, torch.Tensor):

@@ -1,0 +1,83 @@
+{
+  "project_step": 7,
+  "experiment": "classical_and_neural_longstaff_schwartz",
+  "default_profile": "smoke",
+  "profiles": {
+    "smoke": {
+      "training_contracts": 12,
+      "validation_contracts": 4,
+      "test_contracts": 8,
+      "ood_contracts": 4,
+      "exercise_steps": 10,
+      "policy_training_paths_per_contract": 2000,
+      "valuation_paths_per_contract": 5000,
+      "neural_epochs_per_step": 8,
+      "max_training_samples_per_step": 20000
+    },
+    "standard": {
+      "training_contracts": 80,
+      "validation_contracts": 20,
+      "test_contracts": 40,
+      "ood_contracts": 20,
+      "exercise_steps": 25,
+      "policy_training_paths_per_contract": 10000,
+      "valuation_paths_per_contract": 20000,
+      "neural_epochs_per_step": 25,
+      "max_training_samples_per_step": 100000
+    },
+    "final": {
+      "training_contracts": 200,
+      "validation_contracts": 50,
+      "test_contracts": 100,
+      "ood_contracts": 40,
+      "exercise_steps": 25,
+      "policy_training_paths_per_contract": 25000,
+      "valuation_paths_per_contract": 50000,
+      "neural_epochs_per_step": 50,
+      "max_training_samples_per_step": 250000
+    }
+  },
+  "in_domain_ranges": {
+    "moneyness": [
+      0.65,
+      1.25
+    ],
+    "time_to_maturity": [
+      0.1,
+      2.0
+    ],
+    "risk_free_rate": [
+      0.0,
+      0.1
+    ],
+    "dividend_yield": [
+      0.0,
+      0.08
+    ],
+    "volatility": [
+      0.08,
+      0.65
+    ]
+  },
+  "classical_basis_candidates": [
+    {
+      "basis": "polynomial",
+      "degree": 2
+    },
+    {
+      "basis": "polynomial",
+      "degree": 3
+    },
+    {
+      "basis": "laguerre",
+      "degree": 3
+    }
+  ],
+  "crr_benchmark_steps": 2000,
+  "seeds": [
+    42,
+    137,
+    2026
+  ],
+  "requirements_amendment_required": false
+}

@@ -413,6 +413,7 @@ deep_learning_american_option_pricing/
 │   │   ├── black_scholes.py
 │   │   ├── binomial_tree.py
 │   │   ├── validation.py
+│   │   ├── simulation.py
 │   │   └── longstaff_schwartz.py
 │   │
 │   ├── data/
@@ -423,15 +424,26 @@ deep_learning_american_option_pricing/
 │   │   └── torch_datasets.py
 │   │
 │   ├── models/
-│   │   └── direct_pricer.py
+│   │   ├── direct_pricer.py
+│   │   ├── premium_pricer.py
+│   │   ├── multitask_pricer.py
+│   │   └── neural_longstaff_schwartz.py
 │   │
 │   ├── training/
 │   │   ├── loops.py
-│   │   └── checkpointing.py
+│   │   ├── checkpointing.py
+│   │   ├── losses.py
+│   │   ├── multitask_losses.py
+│   │   ├── multitask_loops.py
+│   │   └── lsm_training.py
 │   │
 │   └── evaluation/
 │       ├── regression_metrics.py
-│       └── financial_checks.py
+│       ├── financial_checks.py
+│       ├── model_comparison.py
+│       ├── classification_metrics.py
+│       ├── exercise_boundary.py
+│       └── lsm_comparison.py
 │
 ├── tests/
 │   ├── test_black_scholes.py
@@ -440,7 +452,13 @@ deep_learning_american_option_pricing/
 │   ├── test_data_splitting.py
 │   ├── test_torch_datasets.py
 │   ├── test_direct_pricer.py
-│   └── test_training_pipeline.py
+│   ├── test_training_pipeline.py
+│   ├── test_premium_pricer.py
+│   ├── test_multitask_pricer.py
+│   ├── test_gbm_simulation.py
+│   ├── test_longstaff_schwartz.py
+│   ├── test_neural_longstaff_schwartz.py
+│   └── test_lsm_comparison.py
 │
 ├── data/
 │   ├── generated/          # ignored by Git
@@ -507,15 +525,37 @@ The notebooks form one sequential academic workflow.
 - evaluates out-of-domain deterioration;
 - benchmarks neural inference against CRR pricing.
 
-### Notebooks 05–08 — Planned modeling and final evaluation
+### Notebook 05 — Early-exercise-premium models
 
-These notebooks will cover:
+- compares direct-price and residual target formulations;
+- trains unconstrained, non-negative-premium, and financial-floor residual models;
+- evaluates weighted and boundary-aware losses;
+- tests financial lower-bound violations;
+- evaluates H2 and H3.
 
-- early-exercise-premium modeling;
-- financially constrained learning;
-- exercise-boundary learning;
-- neural Longstaff–Schwartz;
-- consolidated hypothesis testing and conclusions.
+### Notebook 06 — Exercise-boundary multi-task model
+
+- validates exercise labels and class balance;
+- trains an exercise-only classifier;
+- trains a shared price-and-exercise network;
+- reconstructs exercise boundaries;
+- evaluates boundary-region pricing and H4.
+
+### Notebook 07 — Classical and neural Longstaff–Schwartz
+
+- validates risk-neutral GBM simulation;
+- compares polynomial and Laguerre classical LSM policies;
+- studies path-count and exercise-date convergence;
+- trains amortized neural continuation networks;
+- evaluates policies on independent held-out paths and contracts;
+- reports OOD, multi-seed, stopping-policy, and runtime results.
+
+### Notebook 08 — Planned final evaluation
+
+- consolidates all static and simulation-based models;
+- applies the static surrogates to the shared LSM contract grid;
+- decides the remaining hypotheses;
+- presents final conclusions and limitations.
 
 ---
 
@@ -600,6 +640,16 @@ python -m pytest -q \
     tests/test_training_pipeline.py
 ```
 
+Run the simulation and Longstaff–Schwartz tests:
+
+```bash
+python -m pytest -q \
+    tests/test_gbm_simulation.py \
+    tests/test_longstaff_schwartz.py \
+    tests/test_neural_longstaff_schwartz.py \
+    tests/test_lsm_comparison.py
+```
+
 The pricing tests should pass before generating large datasets. A neural network trained on an incorrect pricing engine will learn the implementation error rather than correct it.
 
 ---
@@ -640,7 +690,7 @@ Run the notebooks sequentially:
 08_final_evaluation.ipynb
 ```
 
-At the current stage, Notebooks 01–04 and their supporting implementation modules are prepared. The full production dataset generation and direct-model training still need to be executed in the target environment before empirical results are final.
+At the current stage, Notebooks 01–07 and their supporting implementation modules are prepared. Full-profile data generation, model training, and empirical evaluation still need to be executed in the target environment before the final conclusions are locked.
 
 ---
 
@@ -732,8 +782,13 @@ The literature review covers direct supervised pricing, recurrent architectures,
 - direct MLP architecture;
 - reusable training and checkpointing utilities;
 - regression metrics and financial-consistency checks;
-- notebooks and Markdown documentation for Steps 1–4;
-- unit tests for pricing, data generation, splitting, datasets, model, and training logic.
+- direct, premium, constrained residual, exercise-classification, and multi-task architectures;
+- GBM simulation with antithetic variates and moment validation;
+- classical Longstaff–Schwartz with independent policy and valuation paths;
+- amortized neural continuation-value policy by exercise index;
+- LSM pricing, confidence-interval, stopping-policy, OOD, and runtime comparisons;
+- notebooks and Markdown documentation for Steps 1–7;
+- unit tests for pricing, data, neural models, exercise boundaries, simulation, and LSM logic.
 
 ### Pending execution and empirical validation
 
@@ -745,11 +800,9 @@ The literature review covers direct supervised pricing, recurrent architectures,
 
 ### Planned
 
-- early-exercise-premium model;
-- financially constrained premium architecture;
-- multi-task exercise-boundary model;
-- neural Longstaff–Schwartz extension;
-- final hypothesis decisions;
+- final-profile execution of the premium, multi-task, and neural LSM experiments;
+- cross-model evaluation on one shared contract grid;
+- final H1–H6 hypothesis decisions;
 - consolidated academic paper and conclusions.
 
 ---

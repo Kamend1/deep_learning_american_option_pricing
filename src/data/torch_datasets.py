@@ -116,8 +116,11 @@ class AmericanOptionDataset(Dataset[dict[str, object]]):
         feature_columns: Sequence[str] = FEATURE_COLUMNS,
         target_column: str = DIRECT_TARGET_COLUMN,
         id_column: str = "sample_id",
+        weight_column: str | None = None,
     ) -> None:
         required = [*feature_columns, target_column, id_column]
+        if weight_column is not None:
+            required.append(weight_column)
         missing = [column for column in required if column not in frame.columns]
         if missing:
             raise ValueError(f"Dataset frame is missing columns: {missing}")
@@ -135,9 +138,20 @@ class AmericanOptionDataset(Dataset[dict[str, object]]):
             target_values.astype(np.float32, copy=False)
         ).unsqueeze(1)
         self.row_ids = frame[id_column].to_numpy(copy=True)
+        self.sample_weights = None
+        if weight_column is not None:
+            weight_values = frame[weight_column].to_numpy(dtype=np.float64)
+            if not np.isfinite(weight_values).all():
+                raise ValueError("Sample weights contain NaN or infinite values.")
+            if np.any(weight_values < 0.0):
+                raise ValueError("Sample weights cannot be negative.")
+            self.sample_weights = torch.from_numpy(
+                weight_values.astype(np.float32, copy=False)
+            ).unsqueeze(1)
         self.feature_columns = tuple(feature_columns)
         self.target_column = target_column
         self.id_column = id_column
+        self.weight_column = weight_column
 
     def __len__(self) -> int:
         return len(self.targets)
@@ -146,11 +160,14 @@ class AmericanOptionDataset(Dataset[dict[str, object]]):
         row_id = self.row_ids[index]
         if isinstance(row_id, np.generic):
             row_id = row_id.item()
-        return {
+        item: dict[str, object] = {
             "features": self.features[index],
             "target": self.targets[index],
             "row_id": row_id,
         }
+        if self.sample_weights is not None:
+            item["sample_weight"] = self.sample_weights[index]
+        return item
 
 
 def _seed_worker(worker_id: int) -> None:
@@ -194,3 +211,141 @@ __all__ = [
     "read_parquet_components",
     "save_feature_scaler",
 ]
+
+
+class MultiTaskAmericanOptionDataset(Dataset[dict[str, object]]):
+    """Tensor dataset for residual regression and exercise classification."""
+
+    def __init__(
+        self,
+        frame: pd.DataFrame,
+        *,
+        scaler: StandardScaler,
+        feature_columns: Sequence[str] = FEATURE_COLUMNS,
+        residual_target_column: str = "normalized_floor_residual",
+        exercise_target_column: str = "exercise_now",
+        id_column: str = "sample_id",
+        weight_column: str | None = None,
+        normalized_european_column: str = "normalized_european_price",
+        normalized_intrinsic_column: str = "normalized_intrinsic_value",
+        normalized_american_column: str = "normalized_american_price",
+    ) -> None:
+        required = [
+            *feature_columns,
+            residual_target_column,
+            exercise_target_column,
+            id_column,
+            normalized_european_column,
+            normalized_intrinsic_column,
+            normalized_american_column,
+        ]
+        if weight_column is not None:
+            required.append(weight_column)
+        missing = [column for column in required if column not in frame.columns]
+        if missing:
+            raise ValueError(f"Dataset frame is missing columns: {missing}")
+
+        feature_values = frame.loc[:, feature_columns].to_numpy(dtype=np.float64)
+        residual_values = frame[residual_target_column].to_numpy(dtype=np.float64)
+        exercise_values = frame[exercise_target_column].to_numpy(dtype=np.float64)
+        european_values = frame[normalized_european_column].to_numpy(dtype=np.float64)
+        intrinsic_values = frame[normalized_intrinsic_column].to_numpy(dtype=np.float64)
+        american_values = frame[normalized_american_column].to_numpy(dtype=np.float64)
+
+        arrays = (
+            feature_values,
+            residual_values,
+            exercise_values,
+            european_values,
+            intrinsic_values,
+            american_values,
+        )
+        if not all(np.isfinite(array).all() for array in arrays):
+            raise ValueError("Multi-task dataset contains NaN or infinite values.")
+        if not np.isin(exercise_values, [0.0, 1.0]).all():
+            raise ValueError("Exercise targets must be binary.")
+
+        scaled = scaler.transform(feature_values).astype(np.float32, copy=False)
+        self.features = torch.from_numpy(scaled)
+        self.residual_targets = torch.from_numpy(
+            residual_values.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.exercise_targets = torch.from_numpy(
+            exercise_values.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.normalized_european = torch.from_numpy(
+            european_values.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.normalized_intrinsic = torch.from_numpy(
+            intrinsic_values.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.normalized_american = torch.from_numpy(
+            american_values.astype(np.float32, copy=False)
+        ).unsqueeze(1)
+        self.row_ids = frame[id_column].to_numpy(copy=True)
+        self.sample_weights = None
+        if weight_column is not None:
+            weight_values = frame[weight_column].to_numpy(dtype=np.float64)
+            if not np.isfinite(weight_values).all() or np.any(weight_values < 0.0):
+                raise ValueError("Sample weights must be finite and non-negative.")
+            self.sample_weights = torch.from_numpy(
+                weight_values.astype(np.float32, copy=False)
+            ).unsqueeze(1)
+
+        self.feature_columns = tuple(feature_columns)
+        self.residual_target_column = residual_target_column
+        self.exercise_target_column = exercise_target_column
+        self.id_column = id_column
+        self.weight_column = weight_column
+
+    def __len__(self) -> int:
+        return len(self.residual_targets)
+
+    def __getitem__(self, index: int) -> dict[str, object]:
+        row_id = self.row_ids[index]
+        if isinstance(row_id, np.generic):
+            row_id = row_id.item()
+        item: dict[str, object] = {
+            "features": self.features[index],
+            "residual_target": self.residual_targets[index],
+            "exercise_target": self.exercise_targets[index],
+            "normalized_european": self.normalized_european[index],
+            "normalized_intrinsic": self.normalized_intrinsic[index],
+            "normalized_american": self.normalized_american[index],
+            "row_id": row_id,
+        }
+        if self.sample_weights is not None:
+            item["sample_weight"] = self.sample_weights[index]
+        return item
+
+
+def create_multitask_loader(
+    dataset: MultiTaskAmericanOptionDataset,
+    *,
+    config: LoaderConfig,
+    shuffle: bool,
+    drop_last: bool = False,
+) -> DataLoader:
+    """Create a deterministic DataLoader for multi-task observations."""
+
+    generator = torch.Generator()
+    generator.manual_seed(config.seed)
+    return DataLoader(
+        dataset,
+        batch_size=config.batch_size,
+        shuffle=shuffle,
+        num_workers=config.num_workers,
+        pin_memory=config.pin_memory and torch.cuda.is_available(),
+        drop_last=drop_last,
+        worker_init_fn=_seed_worker if config.num_workers else None,
+        generator=generator,
+        persistent_workers=config.num_workers > 0,
+    )
+
+
+__all__.extend(
+    [
+        "MultiTaskAmericanOptionDataset",
+        "create_multitask_loader",
+    ]
+)
