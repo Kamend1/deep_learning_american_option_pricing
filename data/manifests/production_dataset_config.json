@@ -1,0 +1,40 @@
+{
+  "manifest_version": 1,
+  "project": "deep_learning_american_option_pricing",
+  "status": "approved_production_design",
+  "expected_total_observations": 1450000,
+  "components": {
+    "core": 1000000,
+    "boundary": 250000,
+    "ood_high_volatility": 50000,
+    "ood_extreme_moneyness": 50000,
+    "ood_long_maturity": 50000,
+    "ood_rate_dividend": 50000
+  },
+  "in_domain_observations": 1250000,
+  "out_of_domain_observations": 200000,
+  "tree_steps": 250,
+  "strike": 100.0,
+  "chunk_size": 25000,
+  "seed": 42,
+  "boundary_candidate_multiplier": 2.0,
+  "split": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15,
+    "method": "deterministic class-aware SplitMix64 hashing"
+  },
+  "feature_columns": [
+    "log_moneyness",
+    "time_to_maturity",
+    "risk_free_rate",
+    "dividend_yield",
+    "volatility"
+  ],
+  "direct_target": "normalized_american_price",
+  "notes": [
+    "Generated Parquet files remain excluded from Git.",
+    "The tracked production manifest records final counts, hashes, and pricing diagnostics.",
+    "The tree-step value may be changed by CLI only if Notebook 02 supports the revised choice."
+  ]
+}

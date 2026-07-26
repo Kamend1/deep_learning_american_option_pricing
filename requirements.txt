@@ -1,0 +1,82 @@
+# Deep Learning for American Option Pricing
+# Target environment: Python 3.10+
+#
+# Dependency policy:
+# - Version ranges are used instead of exact pins because the project is expected
+#   to run both locally and in managed notebook environments such as Colab.
+# - The lower bounds support the current project architecture.
+# - The upper bounds prevent unreviewed major-version upgrades.
+# - Review this file whenever a new source module or notebook adds an import.
+#
+# Install:
+#   python -m pip install --upgrade pip
+#   pip install -r requirements.txt
+#
+# For a CUDA-specific PyTorch installation, use the official PyTorch installation
+# selector first, then install the remaining requirements.
+
+# ---------------------------------------------------------------------------
+# Core numerical computing and tabular data
+# ---------------------------------------------------------------------------
+numpy>=1.26,<2.6
+pandas>=2.2,<3.1
+scipy>=1.12,<2
+pyarrow>=17,<26
+joblib>=1.4,<2
+
+# ---------------------------------------------------------------------------
+# Classical machine learning and preprocessing
+# ---------------------------------------------------------------------------
+scikit-learn>=1.6,<1.10
+
+# ---------------------------------------------------------------------------
+# Deep learning
+# ---------------------------------------------------------------------------
+torch>=2.4,<3
+torchmetrics>=1.4,<2
+torchinfo>=1.8,<2
+tensorboard>=2.17,<3
+
+# ---------------------------------------------------------------------------
+# Quantitative finance and numerical acceleration
+# ---------------------------------------------------------------------------
+QuantLib>=1.37,<1.44
+numba>=0.63,<1
+
+# ---------------------------------------------------------------------------
+# Visualization and reporting
+# ---------------------------------------------------------------------------
+matplotlib>=3.8,<3.12
+seaborn>=0.13,<1
+tabulate>=0.9,<1
+
+# ---------------------------------------------------------------------------
+# Notebook environment and notebook-to-document workflow
+# ---------------------------------------------------------------------------
+jupyterlab>=4.2,<5
+notebook>=7.2,<8
+ipykernel>=6.29,<8
+ipywidgets>=8.1,<9
+nbformat>=5.10,<6
+nbconvert>=7.16,<8
+
+# ---------------------------------------------------------------------------
+# Training progress, configuration, and runtime diagnostics
+# ---------------------------------------------------------------------------
+tqdm>=4.66,<5
+PyYAML>=6,<7
+psutil>=6,<8
+
+# ---------------------------------------------------------------------------
+# Testing and coverage
+# ---------------------------------------------------------------------------
+pytest>=8,<10
+pytest-cov>=5,<8
+
+# ---------------------------------------------------------------------------
+# Possible future additions — add only when the project actually uses them
+# ---------------------------------------------------------------------------
+# optuna>=4,<5                # Hyperparameter optimization
+# captum>=0.7,<1              # PyTorch model interpretability
+# shap>=0.46,<1               # Model-agnostic explanation analysis
+# plotly>=5.24,<7             # Interactive reporting

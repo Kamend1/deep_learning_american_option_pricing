@@ -1,0 +1,93 @@
+{
+  "manifest_version": 1,
+  "status": "design_template_before_production_generation",
+  "project": "deep_learning_american_option_pricing",
+  "core_dataset": {
+    "planned_observations": 100000,
+    "parameter_ranges": {
+      "moneyness": [
+        0.5,
+        1.5
+      ],
+      "time_to_maturity": [
+        0.019178082191780823,
+        2.0
+      ],
+      "volatility": [
+        0.05,
+        0.8
+      ],
+      "risk_free_rate": [
+        0.0,
+        0.1
+      ],
+      "dividend_yield": [
+        0.0,
+        0.08
+      ]
+    },
+    "sampling": "randomized_latin_hypercube",
+    "strike": 100.0,
+    "tree_steps": "replace_with_notebook_02_selected_value"
+  },
+  "boundary_dataset": {
+    "planned_observations": 30000,
+    "candidate_rule": "abs(intrinsic_value-continuation_value)/strike <= 0.01",
+    "purpose": "Increase representation near the optimal-stopping boundary."
+  },
+  "split": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15,
+    "seed": 42,
+    "stratify_column": "exercise_now"
+  },
+  "ood_sets": [
+    {
+      "name": "high_volatility",
+      "volatility": [
+        0.8,
+        1.2
+      ]
+    },
+    {
+      "name": "long_maturity",
+      "time_to_maturity": [
+        2.0,
+        4.0
+      ]
+    },
+    {
+      "name": "deep_in_the_money",
+      "moneyness": [
+        0.25,
+        0.5
+      ]
+    },
+    {
+      "name": "deep_out_of_the_money",
+      "moneyness": [
+        1.5,
+        2.0
+      ]
+    },
+    {
+      "name": "high_interest_rate",
+      "risk_free_rate": [
+        0.1,
+        0.2
+      ]
+    },
+    {
+      "name": "high_dividend_yield",
+      "dividend_yield": [
+        0.08,
+        0.15
+      ]
+    }
+  ],
+  "notes": [
+    "Production sample sizes remain configurable and must be checked against Notebook 02 runtime results.",
+    "Generated price files remain outside Git; manifests and small samples may be versioned."
+  ]
+}
