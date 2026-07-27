@@ -1,0 +1,122 @@
+{
+  "manifest_version": 1,
+  "created_at_utc": "2026-07-27T12:06:25.134516+00:00",
+  "project": "deep_learning_american_option_pricing",
+  "generation_config": {
+    "core_observations": 1000000,
+    "boundary_observations": 250000,
+    "ood_observations_per_set": 50000,
+    "tree_steps": 250,
+    "strike": 100.0,
+    "chunk_size": 25000,
+    "seed": 42,
+    "boundary_candidate_multiplier": 2.0,
+    "train_fraction": 0.7,
+    "validation_fraction": 0.15,
+    "test_fraction": 0.15,
+    "compression": "zstd",
+    "compression_level": 3
+  },
+  "expected_total_observations": 1450000,
+  "observed_total_observations": 1450000,
+  "components": [
+    {
+      "name": "core",
+      "path": "data/generated/american_put_core.parquet",
+      "observations": 1000000,
+      "start_id": 0,
+      "end_id": 999999,
+      "split_counts": {
+        "train": 699741,
+        "validation": 150146,
+        "test": 150113
+      },
+      "exercise_count": 104626,
+      "floor_adjustment_count": 142474,
+      "max_floor_adjustment": 0.043632871873501955,
+      "sha256": "8e5390f56ca056c00c4c176bb728be80298585820e07e09e69e67e57ec8a5476"
+    },
+    {
+      "name": "boundary",
+      "path": "data/generated/american_put_boundary.parquet",
+      "observations": 250000,
+      "start_id": 1000000,
+      "end_id": 1249999,
+      "split_counts": {
+        "train": 174771,
+        "test": 37698,
+        "validation": 37531
+      },
+      "exercise_count": 195114,
+      "floor_adjustment_count": 3199,
+      "max_floor_adjustment": 0.0027483793961486924,
+      "sha256": "6c7d958e6144d1df8d94b7273e3ba1326e4e04138c8bf659cbfb63bc71f375b6"
+    },
+    {
+      "name": "ood_high_volatility",
+      "path": "data/generated/american_put_ood_high_volatility.parquet",
+      "observations": 50000,
+      "start_id": 1250000,
+      "end_id": 1299999,
+      "split_counts": {
+        "ood": 50000
+      },
+      "exercise_count": 122,
+      "floor_adjustment_count": 2475,
+      "max_floor_adjustment": 0.059338233573001276,
+      "sha256": "053248a15f40e464a6383e8c24b4d916f3b01f7238fa574313114394c6706449"
+    },
+    {
+      "name": "ood_extreme_moneyness",
+      "path": "data/generated/american_put_ood_extreme_moneyness.parquet",
+      "observations": 50000,
+      "start_id": 1300000,
+      "end_id": 1349999,
+      "split_counts": {
+        "ood": 50000
+      },
+      "exercise_count": 18234,
+      "floor_adjustment_count": 10936,
+      "max_floor_adjustment": 0.05153087498319664,
+      "sha256": "fe7ee6c0935358958e6de20d1ec54774c386974ff7d13508ba0027f8c6a05e24"
+    },
+    {
+      "name": "ood_long_maturity",
+      "path": "data/generated/american_put_ood_long_maturity.parquet",
+      "observations": 50000,
+      "start_id": 1350000,
+      "end_id": 1399999,
+      "split_counts": {
+        "ood": 50000
+      },
+      "exercise_count": 3326,
+      "floor_adjustment_count": 3083,
+      "max_floor_adjustment": 0.0474105502880775,
+      "sha256": "afe11dd5df8e7bd8a23466756098089ca27a68de8ac32d1d3f72101100e74063"
+    },
+    {
+      "name": "ood_rate_dividend",
+      "path": "data/generated/american_put_ood_rate_dividend.parquet",
+      "observations": 50000,
+      "start_id": 1400000,
+      "end_id": 1449999,
+      "split_counts": {
+        "ood": 50000
+      },
+      "exercise_count": 8460,
+      "floor_adjustment_count": 2388,
+      "max_floor_adjustment": 0.007990167093644418,
+      "sha256": "0b7ea7a9bdea15def12e96f132bcb014a174931ca1710216df4a629283840695"
+    }
+  ],
+  "feature_columns": [
+    "log_moneyness",
+    "time_to_maturity",
+    "risk_free_rate",
+    "dividend_yield",
+    "volatility"
+  ],
+  "direct_target": "normalized_american_price",
+  "split_method": "deterministic class-aware SplitMix64 hashing",
+  "pricing_floor": "max(raw_american_price, european_price, intrinsic_value)"
+}
