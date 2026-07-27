@@ -116,6 +116,7 @@ data/interim/
 *.npz
 *.pkl
 *.pickle
+*.csv
 
 # ============================================================
 # Trained models, checkpoints, and experiment artifacts
