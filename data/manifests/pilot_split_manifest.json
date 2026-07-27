@@ -1,0 +1,39 @@
+{
+  "created_at_utc": "2026-07-26T13:08:11.615293+00:00",
+  "dataset_name": "american_put_pilot",
+  "manifest_version": 1,
+  "split_config": {
+    "id_column": "sample_id",
+    "seed": 42,
+    "split_column": "split",
+    "stratify_column": "exercise_now",
+    "test_fraction": 0.15,
+    "train_fraction": 0.7,
+    "validation_fraction": 0.15
+  },
+  "split_counts": {
+    "test": 299,
+    "train": 1400,
+    "validation": 301
+  },
+  "split_shares": {
+    "test": 0.1495,
+    "train": 0.7,
+    "validation": 0.1505
+  },
+  "stratification_distribution": {
+    "test": {
+      "False": 269,
+      "True": 30
+    },
+    "train": {
+      "False": 1257,
+      "True": 143
+    },
+    "validation": {
+      "False": 270,
+      "True": 31
+    }
+  },
+  "total_observations": 2000
+}
