@@ -60,13 +60,13 @@ The neural networks learn a pricing function generated under a clearly defined n
 
 Under the Black–Scholes–Merton framework with continuous dividend yield, the European put value is
 
-\[
+$$
 P_E = K e^{-rT}N(-d_2) - S e^{-qT}N(-d_1),
-\]
+$$
 
 where
 
-\[
+$$
 d_1 =
 \frac{
 \ln(S/K) + \left(r-q+\frac{1}{2}\sigma^2\right)T
@@ -75,7 +75,7 @@ d_1 =
 },
 \qquad
 d_2=d_1-\sigma\sqrt{T}.
-\]
+$$
 
 The Black–Scholes price is used as:
 
@@ -88,13 +88,13 @@ The Black–Scholes price is used as:
 
 At time \(t\), the American put holder compares immediate exercise value
 
-\[
+$$
 I(S_t)=\max(K-S_t,0)
-\]
+$$
 
 with continuation value
 
-\[
+$$
 C(S_t,t)=
 \mathbb{E}^{\mathbb{Q}}
 \left[
@@ -102,37 +102,37 @@ e^{-r\Delta t}
 V_A(S_{t+\Delta t},t+\Delta t)
 \mid S_t
 \right].
-\]
+$$
 
 The American value is
 
-\[
+$$
 V_A(S_t,t)=\max\left(I(S_t),C(S_t,t)\right).
-\]
+$$
 
 ### Early-exercise premium
 
 The American option can be decomposed as
 
-\[
+$$
 V_A = V_E + EEP,
-\]
+$$
 
 where
 
-\[
+$$
 EEP = V_A - V_E \geq 0.
-\]
+$$
 
 The main proposed neural model predicts only this residual component:
 
-\[
+$$
 \widehat{V}_A
 =
 V_{BS}
 +
 \operatorname{Softplus}(g_\theta(x)).
-\]
+$$
 
 This embeds the non-negative early-exercise-premium condition directly in the model architecture.
 
@@ -194,7 +194,7 @@ The generation pipeline uses randomized Latin hypercube sampling and a Numba-acc
 
 The core input vector is
 
-\[
+$$
 x =
 \left[
 \log(S/K),\;
@@ -203,13 +203,13 @@ r,\;
 q,\;
 \sigma
 \right].
-\]
+$$
 
 The primary normalized target is
 
-\[
+$$
 y=\frac{V_A}{K}.
-\]
+$$
 
 Generated records include:
 
@@ -338,13 +338,13 @@ Input(5)
 
 The authoritative price is reconstructed as
 
-\[
+$$
 \widehat V_A
 =
 \max(V_E,I)
 +
 \operatorname{Softplus}(\widehat R_F).
-\]
+$$
 
 The continuation and exercise heads provide two independent paths to the stopping decision. Their disagreement is measured and penalized during training. The integrated static model remains separate from neural LSM because neural LSM consumes simulated paths and time-indexed states rather than one static contract vector.
 
@@ -370,17 +370,17 @@ MAPE is not used as the primary measure because percentage errors become unstabl
 
 Predicted American put values should satisfy:
 
-\[
+$$
 \widehat{V}_A \geq 0,
-\]
+$$
 
-\[
+$$
 \widehat{V}_A \geq \max(K-S,0),
-\]
+$$
 
-\[
+$$
 \widehat{V}_A \geq V_E.
-\]
+$$
 
 The project also tests expected directional properties:
 
