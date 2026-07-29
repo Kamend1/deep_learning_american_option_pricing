@@ -33,6 +33,8 @@ class IntegratedTrainingConfig:
     mixed_precision: bool = True
     seed: int = 42
     min_delta: float = 1e-8
+    verbose: bool = True
+    progress_interval_batches: int = 100
 
     def __post_init__(self) -> None:
         if self.epochs <= 0:
@@ -47,6 +49,8 @@ class IntegratedTrainingConfig:
             raise ValueError("scheduler_factor must lie between zero and one.")
         if self.gradient_clip_norm is not None and self.gradient_clip_norm <= 0.0:
             raise ValueError("gradient_clip_norm must be positive when supplied.")
+        if self.progress_interval_batches < 0:
+            raise ValueError("progress_interval_batches cannot be negative.")
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -78,6 +82,18 @@ def _autocast_context(device: torch.device, enabled: bool):
     )
 
 
+def _validate_finite_metrics(metrics: dict[str, float], *, phase: str) -> None:
+    invalid = {
+        name: value
+        for name, value in metrics.items()
+        if not np.isfinite(value)
+    }
+    if invalid:
+        raise FloatingPointError(
+            f"Non-finite metrics detected during {phase}: {invalid}"
+        )
+
+
 def run_integrated_epoch(
     model: nn.Module,
     loader: DataLoader,
@@ -88,6 +104,10 @@ def run_integrated_epoch(
     scaler: torch.amp.GradScaler | None = None,
     gradient_clip_norm: float | None = None,
     mixed_precision: bool = True,
+    phase: str | None = None,
+    epoch: int | None = None,
+    total_epochs: int | None = None,
+    progress_interval_batches: int = 0,
 ) -> dict[str, float]:
     """Run one training or evaluation epoch for all four model heads."""
 
@@ -113,7 +133,12 @@ def run_integrated_epoch(
         }
     )
 
-    for batch in loader:
+    try:
+        total_batches = len(loader)
+    except TypeError:
+        total_batches = None
+
+    for batch_index, batch in enumerate(loader, start=1):
         features = _tensor(batch, "features", device)
         floor_residual_target = _tensor(
             batch, "floor_residual_target", device
@@ -201,6 +226,39 @@ def run_integrated_epoch(
             (predicted_class != continuation_class).sum().cpu()
         )
 
+        should_report_progress = (
+            progress_interval_batches > 0
+            and (
+                batch_index == 1
+                or batch_index % progress_interval_batches == 0
+                or (
+                    total_batches is not None
+                    and batch_index == total_batches
+                )
+            )
+        )
+        if should_report_progress:
+            observations_so_far = max(totals["observations"], 1.0)
+            phase_label = phase or ("train" if training else "validation")
+            epoch_label = ""
+            if epoch is not None:
+                epoch_label = f"Epoch {epoch:03d}"
+                if total_epochs is not None:
+                    epoch_label += f"/{total_epochs:03d}"
+                epoch_label += " | "
+            batch_label = (
+                f"{batch_index}/{total_batches}"
+                if total_batches is not None
+                else str(batch_index)
+            )
+            print(
+                f"{epoch_label}{phase_label} batch {batch_label} | "
+                f"running loss: {totals['loss'] / observations_so_far:.8f} | "
+                f"running price MAE: "
+                f"{totals['constrained_absolute_error'] / observations_so_far:.8f}",
+                flush=True,
+            )
+
     observations = max(totals["observations"], 1.0)
     result = {
         name: totals[name] / observations
@@ -238,10 +296,15 @@ def fit_integrated_multihead_model(
     model_config: dict[str, object] | None = None,
     warm_start_report: dict[str, object] | None = None,
 ) -> pd.DataFrame:
-    """Train the integrated model with scheduling and early stopping."""
+    """Train the integrated model with visible progress and early stopping."""
 
     set_integrated_seed(config.seed)
+
+    # Both modules contain tensors. The loss owns the positive-class-weight
+    # buffer, so it must be moved to the same device as the model and batches.
     model.to(device)
+    loss_fn.to(device)
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=config.learning_rate,
@@ -260,12 +323,29 @@ def fit_integrated_multihead_model(
     )
 
     checkpoint = Path(checkpoint_path)
+    checkpoint.parent.mkdir(parents=True, exist_ok=True)
     best_validation = float("inf")
     epochs_without_improvement = 0
     history: list[dict[str, float]] = []
 
+    if config.verbose:
+        print(
+            "Integrated multi-head training started | "
+            f"device: {device} | "
+            f"epochs: {config.epochs} | "
+            f"train batches: {len(train_loader)} | "
+            f"validation batches: {len(validation_loader)} | "
+            f"mixed precision: "
+            f"{config.mixed_precision and device.type == 'cuda'}",
+            flush=True,
+        )
+
     for epoch in range(1, config.epochs + 1):
         started = time.perf_counter()
+        progress_interval = (
+            config.progress_interval_batches if config.verbose else 0
+        )
+
         train_metrics = run_integrated_epoch(
             model,
             train_loader,
@@ -275,6 +355,10 @@ def fit_integrated_multihead_model(
             scaler=grad_scaler,
             gradient_clip_norm=config.gradient_clip_norm,
             mixed_precision=config.mixed_precision,
+            phase="train",
+            epoch=epoch,
+            total_epochs=config.epochs,
+            progress_interval_batches=progress_interval,
         )
         validation_metrics = run_integrated_epoch(
             model,
@@ -282,12 +366,27 @@ def fit_integrated_multihead_model(
             loss_fn=loss_fn,
             device=device,
             mixed_precision=config.mixed_precision,
+            phase="validation",
+            epoch=epoch,
+            total_epochs=config.epochs,
+            progress_interval_batches=progress_interval,
         )
+
+        _validate_finite_metrics(train_metrics, phase=f"training epoch {epoch}")
+        _validate_finite_metrics(
+            validation_metrics,
+            phase=f"validation epoch {epoch}",
+        )
+
+        previous_learning_rate = float(optimizer.param_groups[0]["lr"])
         scheduler.step(validation_metrics["loss"])
+        current_learning_rate = float(optimizer.param_groups[0]["lr"])
+        epoch_seconds = float(time.perf_counter() - started)
+
         row: dict[str, float] = {
             "epoch": float(epoch),
-            "learning_rate": float(optimizer.param_groups[0]["lr"]),
-            "epoch_seconds": float(time.perf_counter() - started),
+            "learning_rate": current_learning_rate,
+            "epoch_seconds": epoch_seconds,
         }
         for name, value in train_metrics.items():
             row[f"train_{name}"] = float(value)
@@ -296,6 +395,7 @@ def fit_integrated_multihead_model(
         history.append(row)
 
         improved = validation_metrics["loss"] < best_validation - config.min_delta
+        checkpoint_saved = False
         if improved:
             best_validation = validation_metrics["loss"]
             epochs_without_improvement = 0
@@ -316,13 +416,73 @@ def fit_integrated_multihead_model(
                 },
                 checkpoint,
             )
+            checkpoint_saved = True
         else:
             epochs_without_improvement += 1
-            if epochs_without_improvement >= config.early_stopping_patience:
-                break
+
+        if config.verbose:
+            status = (
+                "checkpoint saved"
+                if checkpoint_saved
+                else (
+                    "no improvement "
+                    f"({epochs_without_improvement}/"
+                    f"{config.early_stopping_patience})"
+                )
+            )
+            lr_change = ""
+            if current_learning_rate != previous_learning_rate:
+                lr_change = (
+                    f" | LR reduced: {previous_learning_rate:.2e}"
+                    f" -> {current_learning_rate:.2e}"
+                )
+            print(
+                f"Epoch {epoch:03d}/{config.epochs:03d} complete | "
+                f"train loss: {train_metrics['loss']:.8f} | "
+                f"val loss: {validation_metrics['loss']:.8f} | "
+                f"train price MAE: "
+                f"{train_metrics['constrained_price_mae']:.8f} | "
+                f"val price MAE: "
+                f"{validation_metrics['constrained_price_mae']:.8f} | "
+                f"val continuation MAE: "
+                f"{validation_metrics['continuation_mae']:.8f} | "
+                f"val accuracy: "
+                f"{validation_metrics['classification_accuracy']:.4f} | "
+                f"val disagreement: "
+                f"{validation_metrics['decision_disagreement_rate']:.4f} | "
+                f"LR: {current_learning_rate:.2e} | "
+                f"time: {epoch_seconds:.1f}s | {status}"
+                f"{lr_change}",
+                flush=True,
+            )
+
+        if epochs_without_improvement >= config.early_stopping_patience:
+            if config.verbose:
+                print(
+                    f"Early stopping after epoch {epoch}; "
+                    f"best validation loss: {best_validation:.8f}.",
+                    flush=True,
+                )
+            break
+
+    if not checkpoint.exists():
+        raise FileNotFoundError(
+            "Training finished without creating a checkpoint: "
+            f"{checkpoint}"
+        )
 
     saved = torch.load(checkpoint, map_location=device, weights_only=False)
     model.load_state_dict(saved["model_state_dict"])
+
+    if config.verbose:
+        print(
+            "Integrated multi-head training complete | "
+            f"best epoch: {saved['epoch']} | "
+            f"best validation loss: {saved['validation_loss']:.8f} | "
+            f"checkpoint: {checkpoint}",
+            flush=True,
+        )
+
     return pd.DataFrame(history)
 
 
