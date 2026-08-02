@@ -629,45 +629,123 @@ The notebooks form one sequential academic workflow.
 
 ## Installation
 
-### 1. Clone the repository
+> [!IMPORTANT]
+> **Cloning the GitHub repository does not download the production dataset or trained model artifacts.**
+>
+> The large Parquet datasets, model checkpoints, scalers, training histories, model-selection tables, and evaluation outputs are versioned with **DVC** and stored in a publicly readable Cloudflare R2 remote.
+>
+> After installing the project dependencies, every reviewer must run:
+>
+> ```bash
+> dvc pull
+> ```
+>
+> No Cloudflare account, API token, access key, or secret key is required for downloading the published project assets.
+
+### Quick setup for reviewers and graders
+
+```bash
+git clone https://github.com/Kamend1/deep_learning_american_option_pricing.git
+cd deep_learning_american_option_pricing
+
+python -m venv .venv
+source .venv/bin/activate
+
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+dvc pull
+```
+
+For Windows PowerShell, activate the environment with:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+After `dvc pull`, DVC reconstructs the versioned project assets in their expected locations, including:
+
+```text
+data/generated/
+artifacts/direct_mlp/
+artifacts/premium_models/
+artifacts/multitask_model/
+artifacts/neural_lsm/
+artifacts/final_multihead/
+```
+
+Confirm that the assets were downloaded successfully:
+
+```bash
+dvc status
+find data artifacts -maxdepth 2 -type f | head -50
+```
+
+For a load-only academic review, the submitted versions of Notebooks 04–08 should use:
+
+```python
+FORCE_TRAIN = False
+```
+
+With this setting, each notebook checks whether its complete training outputs are available, loads the saved checkpoint and supporting histories, and continues directly to evaluation and analysis. Full training is required only when the expected artifacts are missing or when `FORCE_TRAIN = True` is set explicitly.
+
+### Manual installation steps
+
+#### 1. Clone the repository
 
 ```bash
 git clone https://github.com/Kamend1/deep_learning_american_option_pricing.git
 cd deep_learning_american_option_pricing
 ```
 
-### 2. Create a virtual environment
+#### 2. Create a virtual environment
 
-#### Windows PowerShell
+##### Windows PowerShell
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
-#### macOS or Linux
+##### macOS or Linux
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Install dependencies
+#### 3. Install dependencies
 
 ```bash
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
+
+If the `dvc` command is not available after dependency installation:
+
+```bash
+python -m pip install "dvc[s3]"
+```
+
+#### 4. Download the published dataset and trained models
+
+Run this command from the repository root:
+
+```bash
+dvc pull
+```
+
+The default DVC remote is publicly readable. Downloading does not require credentials. Write credentials are used only by the project author when publishing new DVC objects.
 
 Optional independent validation:
 
 ```bash
-pip install QuantLib
+python -m pip install QuantLib
 ```
 
 ### PyTorch and CUDA
 
-CPU execution is fully supported.
+CPU execution is fully supported for loading saved models and running most evaluation workflows.
 
 For GPU training, install the appropriate CUDA-enabled PyTorch build for the local environment before installing the remaining project dependencies.
 
@@ -829,24 +907,53 @@ At the current stage, Notebooks 01–08 and their supporting implementation modu
 
 ---
 
-## Generated data and Git policy
+## Generated data, trained models, DVC, and Git policy
 
-Large generated datasets, checkpoints, and experiment outputs are intentionally excluded from Git.
+Large generated datasets, checkpoints, and experiment outputs are intentionally excluded from ordinary Git tracking. They are versioned through **DVC**, while GitHub stores only the lightweight `.dvc` pointer files and project configuration.
 
-Typical ignored paths include:
+A normal Git clone therefore contains the code and metadata, but not the large binary assets.
+
+### Required download after cloning
+
+```bash
+dvc pull
+```
+
+This command uses the public read-only DVC remote configured in `.dvc/config` and restores the exact dataset and trained-model versions referenced by the current Git commit.
+
+No credentials are required for public downloading.
+
+The project author publishes new or updated assets through a separate authenticated write remote. Access keys and secret keys are stored only in local DVC configuration and are never committed to GitHub.
+
+DVC-managed paths include:
 
 ```text
 data/generated/
+artifacts/direct_mlp/
+artifacts/premium_models/
+artifacts/multitask_model/
+artifacts/neural_lsm/
+artifacts/final_multihead/
+```
+
+Typical additional ignored paths include:
+
+```text
 data/processed/
 models/
 checkpoints/
-artifacts/
 runs/
+.dvc/cache/
+.dvc/tmp/
 ```
 
-Small metadata files remain tracked:
+Small metadata files remain tracked directly in Git:
 
 ```text
+.dvc/config
+.dvcignore
+data/generated.dvc
+artifacts/*.dvc
 data/manifests/
 references/
 docs/
@@ -865,6 +972,16 @@ Dataset manifests record:
 - chunk sizes;
 - split counts;
 - validation results.
+
+### Reviewer verification
+
+After cloning and running `dvc pull`, a reviewer can verify the local state with:
+
+```bash
+dvc status
+```
+
+A clean result means that the local data and artifact directories match the versions referenced by Git and DVC.
 
 ---
 
