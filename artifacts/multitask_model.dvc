@@ -1,0 +1,6 @@
+outs:
+- md5: 9b940ffc125eef268853a5e6f49dfd34.dir
+  size: 1989065
+  nfiles: 19
+  hash: md5
+  path: multitask_model

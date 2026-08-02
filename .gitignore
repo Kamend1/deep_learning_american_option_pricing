@@ -173,3 +173,9 @@ literature/papers/
 # ============================================================
 *.bak
 *.orig
+
+# Allow DVC metadata inside the ignored artifacts directory
+!artifacts/
+artifacts/*
+!artifacts/*.dvc
+!artifacts/.gitignore

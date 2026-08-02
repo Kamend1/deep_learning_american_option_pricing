@@ -1,0 +1,6 @@
+outs:
+- md5: 7c15ede960a0b6fc7d6ecaa4784cf111.dir
+  size: 1856409
+  nfiles: 21
+  hash: md5
+  path: premium_models

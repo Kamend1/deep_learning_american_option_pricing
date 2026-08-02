@@ -1,0 +1,6 @@
+outs:
+- md5: d33f02baa9505884b62b23d3433d13fc.dir
+  size: 368859
+  nfiles: 7
+  hash: md5
+  path: direct_mlp

@@ -1,0 +1,6 @@
+outs:
+- md5: a73a93cb3ebf32b3e452992c406a2a48.dir
+  size: 792087
+  nfiles: 12
+  hash: md5
+  path: neural_lsm
