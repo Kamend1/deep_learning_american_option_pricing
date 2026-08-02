@@ -5,4 +5,4 @@
     region = auto
     endpointurl = https://00eeba1a3c4c969a02aa14f83b7979ac.r2.cloudflarestorage.com
 ['remote "public-read"']
-    url = https://pub-e83c479d31c74249997b4b1563a8202a.r2.dev/dvc-cache
+    url = https://pub-e83c479d31c74249997b4b1563a8202a.r2.dev/cache
