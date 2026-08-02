@@ -1,9 +1,17 @@
 {
-  "artifact_version": "step9_final_evaluation_skeleton_v1",
+  "artifact_version": "canonical_final_evaluation_v3",
   "expected_total_observations": 1450000,
   "notebook": "notebooks/09_final_evaluation.ipynb",
   "markdown_twin": "docs/09_final_evaluation.md",
   "output_directory": "artifacts/final_evaluation",
+  "source_ownership": {
+    "Black\u2013Scholes proxy": "Notebook 04",
+    "Direct MLP": "Notebook 04",
+    "premium and residual models": "Notebook 05",
+    "exercise classifier and multi-task model": "Notebook 06",
+    "classical and neural LSM": "Notebook 07",
+    "final integrated heads": "Notebook 08"
+  },
   "model_registry": [
     "black_scholes_proxy",
     "crr_benchmark",
@@ -21,17 +29,30 @@
     "H1": "direct_mlp_mae / black_scholes_mae <= 0.95",
     "H2": "best_residual_mae / direct_mlp_mae <= 0.98",
     "H3": "constrained_violation_rate == 0 and direct_violation_rate > 0",
-    "H4": "boundary_f1_gain >= 0.02 and boundary_error improves",
+    "H4": "Use the validation-defined F1 and boundary-error thresholds exported by Notebook 06",
     "H5": "neural_seconds_per_option / crr_seconds_per_option <= 0.50",
     "H6": "aggregate_ood_mae / in_domain_mae >= 1.25"
   },
+  "semantic_checks": [
+    "Direct MLP must resolve to Notebook 04",
+    "Direct and constrained financial-violation rates must be finite",
+    "OOD model-regime rows must be unique",
+    "OOD regime labels must use canonical names",
+    "Runtime benchmark keys must be unique",
+    "Multi-task and integrated exercise F1 values must be available"
+  ],
   "required_outputs": [
     "consolidated_model_metrics.csv",
     "metric_inventory.csv",
     "financial_consistency_table.csv",
     "ood_results.csv",
+    "ood_model_summary.csv",
     "runtime_comparison.csv",
     "boundary_comparison.csv",
+    "static_model_ablation.csv",
+    "lsm_comparison.csv",
+    "semantic_validation.csv",
+    "literature_synthesis.csv",
     "hypothesis_decisions.json",
     "artifact_audit.csv",
     "final_results_summary.json",

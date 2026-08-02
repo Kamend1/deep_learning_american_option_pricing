@@ -126,6 +126,160 @@ def _numeric(value: Any) -> float:
     return number if np.isfinite(number) else float("nan")
 
 
+MODEL_SOURCE_OWNERS = {
+    "Black–Scholes proxy": "04",
+    "Direct MLP": "04",
+    "Zero premium": "05",
+    "Mean premium": "05",
+    "Unconstrained premium": "05",
+    "Non-negative premium": "05",
+    "Constrained floor residual": "05",
+    "Price-only constrained residual": "06",
+    "Multi-task constrained residual": "06",
+    "Final integrated constrained price": "08",
+    "Final integrated direct head": "08",
+}
+
+MODEL_NAME_ALIASES = {
+    "Multi-task model": "Multi-task constrained residual",
+    "Multi-task price": "Multi-task constrained residual",
+    "Final integrated exercise head": "Final integrated constrained price",
+    "Constrained residual": "Final integrated constrained price",
+    "Direct price": "Final integrated direct head",
+}
+
+CONSISTENCY_COLUMN_ALIASES = {
+    "negative_price_count": "negative_price_violations",
+    "negative_price_rate": "negative_price_violation_rate",
+    "below_intrinsic_count": "below_intrinsic_violations",
+    "below_intrinsic_rate": "below_intrinsic_violation_rate",
+    "below_european_count": "below_european_violations",
+    "below_european_rate": "below_european_violation_rate",
+    "below_financial_floor_count": "below_financial_floor_violations",
+    "below_financial_floor_rate": "below_financial_floor_violation_rate",
+}
+
+CANONICAL_CONSISTENCY_COLUMNS = (
+    "model",
+    "source_notebook",
+    "observations",
+    "negative_price_violations",
+    "negative_price_violation_rate",
+    "below_intrinsic_violations",
+    "below_intrinsic_violation_rate",
+    "below_european_violations",
+    "below_european_violation_rate",
+    "below_financial_floor_violations",
+    "below_financial_floor_violation_rate",
+)
+
+
+def _source_string(value: Any) -> str:
+    text = str(value)
+    return text.zfill(2) if text.isdigit() else text
+
+
+def _canonical_model_name(value: Any) -> str:
+    model = str(value)
+    return MODEL_NAME_ALIASES.get(model, model)
+
+
+def _filter_owned_rows(table: pd.DataFrame) -> pd.DataFrame:
+    """Keep the authoritative notebook for models repeated as benchmarks."""
+
+    if table.empty or not {"model", "source_notebook"}.issubset(table.columns):
+        return table
+    result = table.copy()
+    result["source_notebook"] = result["source_notebook"].map(_source_string)
+    owner = result["model"].map(MODEL_SOURCE_OWNERS)
+    result = result.loc[owner.isna() | owner.eq(result["source_notebook"])].copy()
+    return result
+
+
+def _deduplicate_with_source_ownership(
+    table: pd.DataFrame,
+    *,
+    keys: list[str],
+) -> pd.DataFrame:
+    if table.empty:
+        return table
+    result = _filter_owned_rows(table)
+    result["_source_rank"] = (
+        result["source_notebook"]
+        .map({"04": 0, "05": 1, "06": 2, "07": 3, "08": 4})
+        .fillna(99)
+    )
+    result = (
+        result.sort_values("_source_rank")
+        .drop_duplicates(subset=keys, keep="first")
+        .drop(columns="_source_rank")
+    )
+    return result
+
+
+def _normalize_regime_name(value: Any) -> str:
+    name = str(value)
+    for prefix in ("american_put_ood_", "ood_"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+    for suffix in (".parquet", ".csv", ".json"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+    return name
+
+
+def _canonical_consistency_record(
+    record: Mapping[str, Any],
+    *,
+    model: str,
+    source_notebook: str,
+    observations: Any = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "model": _canonical_model_name(model),
+        "source_notebook": _source_string(source_notebook),
+        "observations": observations,
+    }
+    for key, value in record.items():
+        canonical_key = CONSISTENCY_COLUMN_ALIASES.get(str(key), str(key))
+        if canonical_key in {"model", "source_notebook"}:
+            continue
+        if canonical_key == "observations" and observations is not None:
+            continue
+        result[canonical_key] = value
+    return result
+
+
+def _model_observations(records: Any) -> dict[str, Any]:
+    frame = _first_column_to_model(_frame(records))
+    if frame.empty or not {"model", "observations"}.issubset(frame.columns):
+        return {}
+    return {
+        _canonical_model_name(record["model"]): record.get("observations")
+        for record in frame.to_dict(orient="records")
+    }
+
+
+def _maximum_violation_rate(frame: pd.DataFrame) -> float:
+    if frame.empty:
+        return float("nan")
+    row = frame.iloc[0]
+    rate_columns = [
+        column
+        for column in frame.columns
+        if column.endswith("_violation_rate")
+    ]
+    values = [_numeric(row.get(column)) for column in rate_columns]
+    finite = [value for value in values if np.isfinite(value)]
+    if finite:
+        return max(finite)
+    observations = _numeric(row.get("observations"))
+    total = _numeric(row.get("total_bound_violations"))
+    if observations > 0 and np.isfinite(total):
+        return total / observations
+    return float("nan")
+
+
 def load_project_results(project_root: Path) -> dict[str, Any]:
     """Load canonical Notebook 04-08 result packages."""
 
@@ -169,7 +323,7 @@ def _append_metric_rows(
     if "model" not in frame.columns:
         return
     for record in frame.to_dict(orient="records"):
-        model = str(record.pop("model"))
+        model = _canonical_model_name(record.pop("model"))
         rows.append(
             {
                 "model": aliases.get(model, model),
@@ -180,7 +334,7 @@ def _append_metric_rows(
 
 
 def build_static_pricing_table(results: Mapping[str, Any]) -> pd.DataFrame:
-    """Build one in-domain table for comparable static models only."""
+    """Build one in-domain table with explicit source ownership."""
 
     rows: list[dict[str, Any]] = []
 
@@ -200,31 +354,36 @@ def build_static_pricing_table(results: Mapping[str, Any]) -> pd.DataFrame:
             )
 
     premium = results.get("premium") or {}
-    _append_metric_rows(
-        rows,
-        premium.get("pricing"),
-        source_notebook="05",
-    )
+    premium_frame = _first_column_to_model(_frame(premium.get("pricing")))
+    if not premium_frame.empty and "model" in premium_frame.columns:
+        for record in premium_frame.to_dict(orient="records"):
+            model = _canonical_model_name(record.pop("model"))
+            if model == "Direct MLP":
+                continue
+            rows.append(
+                {
+                    "model": model,
+                    "source_notebook": "05",
+                    **record,
+                }
+            )
 
     multitask = results.get("multitask") or {}
     _append_metric_rows(
         rows,
         multitask.get("pricing"),
         source_notebook="06",
+        model_aliases=MODEL_NAME_ALIASES,
     )
 
     integrated = results.get("integrated") or {}
     pricing = _first_column_to_model(_frame(integrated.get("pricing_metrics")))
     if not pricing.empty and "model" in pricing.columns:
-        aliases = {
-            "Constrained residual": "Final integrated constrained price",
-            "Direct price": "Final integrated direct head",
-        }
         for record in pricing.to_dict(orient="records"):
-            model = str(record.pop("model"))
+            model = _canonical_model_name(record.pop("model"))
             rows.append(
                 {
-                    "model": aliases.get(model, model),
+                    "model": model,
                     "source_notebook": "08",
                     **record,
                 }
@@ -252,7 +411,8 @@ def build_static_pricing_table(results: Mapping[str, Any]) -> pd.DataFrame:
         return pd.DataFrame(columns=("model", "source_notebook", *STATIC_METRIC_COLUMNS))
 
     table = pd.DataFrame(rows)
-    table = table.drop_duplicates(subset=["model"], keep="last")
+    table["model"] = table["model"].map(_canonical_model_name)
+    table = _deduplicate_with_source_ownership(table, keys=["model"])
     ordered = ["model", "source_notebook"] + [
         column for column in STATIC_METRIC_COLUMNS if column in table.columns
     ]
@@ -281,32 +441,47 @@ def _wide_consistency_from_checks(
 
 
 def build_financial_consistency_table(results: Mapping[str, Any]) -> pd.DataFrame:
-    """Combine lower-bound and internal-consistency diagnostics."""
+    """Normalize financial checks from Notebooks 04, 05, 06, and 08."""
 
     rows: list[dict[str, Any]] = []
 
     direct = results.get("direct") or {}
+    direct_observations = (
+        (direct.get("pricing") or {}).get("direct_mlp", {}).get("observations")
+    )
     direct_checks = _frame(direct.get("financial_consistency"))
     if not direct_checks.empty:
+        wide = _wide_consistency_from_checks(
+            direct_checks,
+            model="Direct MLP",
+            source_notebook="04",
+        )
         rows.append(
-            _wide_consistency_from_checks(
-                direct_checks,
+            _canonical_consistency_record(
+                wide,
                 model="Direct MLP",
                 source_notebook="04",
+                observations=direct_observations,
             )
         )
 
     premium = results.get("premium") or {}
-    premium_frame = _first_column_to_model(_frame(premium.get("financial_consistency")))
+    premium_observations = _model_observations(premium.get("pricing"))
+    premium_frame = _first_column_to_model(
+        _frame(premium.get("financial_consistency"))
+    )
     if not premium_frame.empty and "model" in premium_frame.columns:
         for record in premium_frame.to_dict(orient="records"):
-            model = str(record.pop("model"))
+            model = _canonical_model_name(record.pop("model"))
+            if model == "Direct MLP":
+                continue
             rows.append(
-                {
-                    "model": model,
-                    "source_notebook": "05",
-                    **record,
-                }
+                _canonical_consistency_record(
+                    record,
+                    model=model,
+                    source_notebook="05",
+                    observations=premium_observations.get(model),
+                )
             )
 
     multitask = results.get("multitask") or {}
@@ -315,29 +490,88 @@ def build_financial_consistency_table(results: Mapping[str, Any]) -> pd.DataFram
     )
     if not multitask_frame.empty and "model" in multitask_frame.columns:
         for record in multitask_frame.to_dict(orient="records"):
-            model = str(record.pop("model"))
+            model = _canonical_model_name(record.pop("model"))
             rows.append(
-                {
-                    "model": model,
-                    "source_notebook": "06",
-                    **record,
-                }
+                _canonical_consistency_record(
+                    record,
+                    model=model,
+                    source_notebook="06",
+                    observations=record.get("observations"),
+                )
             )
 
     integrated = results.get("integrated") or {}
     consistency = integrated.get("consistency_metrics")
     if isinstance(consistency, Mapping):
-        row = {
-            "model": "Final integrated multi-head",
-            "source_notebook": "08",
+        boundary = _frame(integrated.get("boundary_analysis"))
+        observations = (
+            pd.to_numeric(boundary.get("observations"), errors="coerce").sum()
+            if not boundary.empty and "observations" in boundary.columns
+            else None
+        )
+        constrained_record = {
+            "negative_price_violation_rate": consistency.get(
+                "constrained_negative_rate"
+            ),
+            "below_european_violation_rate": consistency.get(
+                "constrained_below_european_rate"
+            ),
+            "below_intrinsic_violation_rate": consistency.get(
+                "constrained_below_intrinsic_rate"
+            ),
+            "any_contradiction_rate": consistency.get(
+                "any_contradiction_rate"
+            ),
+            "exercise_probability_rmse": consistency.get(
+                "exercise_probability_rmse"
+            ),
+            "decision_disagreement_rate": consistency.get(
+                "decision_disagreement_rate"
+            ),
+            "residual_reconstruction_mae": consistency.get(
+                "residual_reconstruction_mae"
+            ),
         }
-        for key, value in consistency.items():
-            row[key] = value
-        rows.append(row)
+        direct_record = {
+            "negative_price_violation_rate": consistency.get(
+                "direct_negative_rate"
+            ),
+            "below_european_violation_rate": consistency.get(
+                "direct_below_european_rate"
+            ),
+            "below_intrinsic_violation_rate": consistency.get(
+                "direct_below_intrinsic_rate"
+            ),
+        }
+        rows.extend(
+            [
+                _canonical_consistency_record(
+                    constrained_record,
+                    model="Final integrated constrained price",
+                    source_notebook="08",
+                    observations=observations,
+                ),
+                _canonical_consistency_record(
+                    direct_record,
+                    model="Final integrated direct head",
+                    source_notebook="08",
+                    observations=observations,
+                ),
+            ]
+        )
 
     if not rows:
-        return pd.DataFrame()
-    return pd.DataFrame(rows).drop_duplicates("model", keep="last").reset_index(drop=True)
+        return pd.DataFrame(columns=CANONICAL_CONSISTENCY_COLUMNS)
+
+    table = pd.DataFrame(rows)
+    table["model"] = table["model"].map(_canonical_model_name)
+    table = _deduplicate_with_source_ownership(table, keys=["model"])
+    for column in CANONICAL_CONSISTENCY_COLUMNS:
+        if column not in table.columns:
+            table[column] = np.nan
+    ordered = list(CANONICAL_CONSISTENCY_COLUMNS)
+    extras = [column for column in table.columns if column not in ordered]
+    return table.loc[:, ordered + extras].reset_index(drop=True)
 
 
 def build_boundary_comparison(results: Mapping[str, Any]) -> pd.DataFrame:
@@ -351,13 +585,13 @@ def build_boundary_comparison(results: Mapping[str, Any]) -> pd.DataFrame:
     location_map: dict[str, dict[str, Any]] = {}
     if not location.empty and "model" in location.columns:
         location_map = {
-            str(record["model"]): record
+            _canonical_model_name(record["model"]): record
             for record in location.to_dict(orient="records")
         }
 
     if not classification.empty and "model" in classification.columns:
         for record in classification.to_dict(orient="records"):
-            model = str(record.pop("model"))
+            model = _canonical_model_name(record.pop("model"))
             location_record = location_map.get(model, {})
             rows.append(
                 {
@@ -378,7 +612,7 @@ def build_boundary_comparison(results: Mapping[str, Any]) -> pd.DataFrame:
     exercise = integrated.get("exercise_metrics")
     boundary = _frame(integrated.get("boundary_analysis"))
     integrated_row: dict[str, Any] = {
-        "model": "Final integrated exercise head",
+        "model": "Final integrated constrained price",
         "source_notebook": "08",
     }
     if isinstance(exercise, Mapping):
@@ -409,7 +643,11 @@ def build_boundary_comparison(results: Mapping[str, Any]) -> pd.DataFrame:
 
     if not rows:
         return pd.DataFrame()
-    return pd.DataFrame(rows).reset_index(drop=True)
+    table = pd.DataFrame(rows)
+    table["model"] = table["model"].map(_canonical_model_name)
+    return _deduplicate_with_source_ownership(table, keys=["model"]).reset_index(
+        drop=True
+    )
 
 
 def _pricing_mae_map(static_pricing: pd.DataFrame) -> dict[str, float]:
@@ -425,7 +663,7 @@ def build_ood_comparison(
     results: Mapping[str, Any],
     static_pricing: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Build one row per static model and OOD regime."""
+    """Build one authoritative row per static model and normalized OOD regime."""
 
     rows: list[dict[str, Any]] = []
     in_domain = _pricing_mae_map(static_pricing)
@@ -435,7 +673,9 @@ def build_ood_comparison(
         rows.append(
             {
                 "model": "Direct MLP",
-                "regime": record.get("ood_set", record.get("component")),
+                "regime": _normalize_regime_name(
+                    record.get("ood_set", record.get("component"))
+                ),
                 "observations": record.get("observations"),
                 "ood_mae": record.get("mae"),
                 "ood_rmse": record.get("rmse"),
@@ -445,10 +685,15 @@ def build_ood_comparison(
 
     premium = results.get("premium") or {}
     for record in _frame(premium.get("ood")).to_dict(orient="records"):
+        model = _canonical_model_name(record.get("model"))
+        if model == "Direct MLP":
+            continue
         rows.append(
             {
-                "model": record.get("model"),
-                "regime": record.get("ood_set", record.get("component")),
+                "model": model,
+                "regime": _normalize_regime_name(
+                    record.get("ood_set", record.get("component"))
+                ),
                 "observations": record.get("observations"),
                 "ood_mae": record.get("mae"),
                 "ood_rmse": record.get("rmse"),
@@ -458,16 +703,14 @@ def build_ood_comparison(
 
     multitask = results.get("multitask") or {}
     for record in _frame(multitask.get("ood")).to_dict(orient="records"):
-        model = record.get("model")
-        if model == "Multi-task price" or pd.notna(record.get("mae")):
+        model = _canonical_model_name(record.get("model"))
+        if pd.notna(record.get("mae")):
             rows.append(
                 {
-                    "model": (
-                        "Multi-task constrained residual"
-                        if model == "Multi-task price"
-                        else model
+                    "model": model,
+                    "regime": _normalize_regime_name(
+                        record.get("ood_set", record.get("component"))
                     ),
-                    "regime": record.get("ood_set", record.get("component")),
                     "observations": record.get("observations"),
                     "ood_mae": record.get("mae"),
                     "ood_rmse": record.get("rmse"),
@@ -480,7 +723,9 @@ def build_ood_comparison(
         rows.append(
             {
                 "model": "Final integrated constrained price",
-                "regime": record.get("component", record.get("ood_set")),
+                "regime": _normalize_regime_name(
+                    record.get("component", record.get("ood_set"))
+                ),
                 "observations": record.get("observations"),
                 "ood_mae": record.get("constrained_mae", record.get("mae")),
                 "ood_rmse": record.get("constrained_rmse", record.get("rmse")),
@@ -488,56 +733,51 @@ def build_ood_comparison(
             }
         )
 
+    columns = (
+        "model",
+        "regime",
+        "observations",
+        "in_domain_mae",
+        "ood_mae",
+        "ood_rmse",
+        "ood_deterioration",
+        "source_notebook",
+    )
     if not rows:
-        return pd.DataFrame(
-            columns=(
-                "model",
-                "regime",
-                "observations",
-                "in_domain_mae",
-                "ood_mae",
-                "ood_rmse",
-                "ood_deterioration",
-                "source_notebook",
-            )
-        )
+        return pd.DataFrame(columns=columns)
 
     table = pd.DataFrame(rows)
+    table["model"] = table["model"].map(_canonical_model_name)
+    table["regime"] = table["regime"].map(_normalize_regime_name)
+    table = _deduplicate_with_source_ownership(
+        table,
+        keys=["model", "regime"],
+    )
     table["in_domain_mae"] = table["model"].map(in_domain)
+    denominator = pd.to_numeric(table["in_domain_mae"], errors="coerce")
     table["ood_deterioration"] = (
-        table["ood_mae"] - table["in_domain_mae"]
-    ) / table["in_domain_mae"]
-    return table.loc[
-        :,
-        [
-            "model",
-            "regime",
-            "observations",
-            "in_domain_mae",
-            "ood_mae",
-            "ood_rmse",
-            "ood_deterioration",
-            "source_notebook",
-        ],
-    ].sort_values(["model", "regime"]).reset_index(drop=True)
+        pd.to_numeric(table["ood_mae"], errors="coerce") - denominator
+    ) / denominator
+    return table.loc[:, list(columns)].sort_values(
+        ["model", "regime"]
+    ).reset_index(drop=True)
 
 
 def build_runtime_comparison_from_results(
     results: Mapping[str, Any],
 ) -> pd.DataFrame:
-    """Normalize static and LSM runtime records."""
+    """Normalize runtime records and remove benchmark duplicates."""
 
     rows: list[dict[str, Any]] = []
 
     direct = results.get("direct") or {}
     for record in _frame(direct.get("runtime")).to_dict(orient="records"):
         seconds = record.get("median_seconds", record.get("seconds"))
-        observations = record.get("observations")
         rows.append(
             {
                 "model": "Direct MLP",
                 "device": record.get("device"),
-                "observations": observations,
+                "observations": record.get("observations"),
                 "seconds": seconds,
                 "source_notebook": "04",
                 "cost_type": "marginal inference",
@@ -546,9 +786,12 @@ def build_runtime_comparison_from_results(
 
     premium = results.get("premium") or {}
     for record in _frame(premium.get("runtime")).to_dict(orient="records"):
+        model = _canonical_model_name(record.get("model"))
+        if model == "Direct MLP":
+            continue
         rows.append(
             {
-                "model": record.get("model"),
+                "model": model,
                 "device": record.get("device"),
                 "observations": record.get("observations"),
                 "seconds": record.get("median_seconds", record.get("seconds")),
@@ -573,15 +816,13 @@ def build_runtime_comparison_from_results(
 
     lsm = results.get("lsm") or {}
     for record in _frame(lsm.get("runtime")).to_dict(orient="records"):
-        count = record.get("count")
-        seconds = record.get("median", record.get("mean"))
         rows.append(
             {
                 "model": record.get("method"),
                 "device": None,
                 "observations": 1,
-                "benchmark_contracts": count,
-                "seconds": seconds,
+                "benchmark_contracts": record.get("count"),
+                "seconds": record.get("median", record.get("mean")),
                 "source_notebook": "07",
                 "cost_type": "per-contract valuation",
             }
@@ -602,6 +843,11 @@ def build_runtime_comparison_from_results(
     table = pd.DataFrame(rows)
     if table.empty:
         return table
+    table["model"] = table["model"].map(_canonical_model_name)
+    table = _deduplicate_with_source_ownership(
+        table,
+        keys=["model", "observations", "cost_type", "device"],
+    )
     table["seconds_per_observation"] = (
         pd.to_numeric(table["seconds"], errors="coerce")
         / pd.to_numeric(table["observations"], errors="coerce")
@@ -633,7 +879,7 @@ def build_static_ablation_table(
     }
     rows = []
     for record in static_pricing.to_dict(orient="records"):
-        model = str(record["model"])
+        model = _canonical_model_name(record["model"])
         if model not in architecture:
             continue
         (
@@ -665,10 +911,11 @@ def build_static_ablation_table(
 
     if not financial_consistency.empty:
         consistency = financial_consistency.copy()
+        consistency["model"] = consistency["model"].map(_canonical_model_name)
         rate_columns = [
             column
             for column in consistency.columns
-            if column.endswith("violation_rate")
+            if column.endswith("_violation_rate")
         ]
         if rate_columns:
             consistency["reported_financial_violation_rate"] = consistency[
@@ -678,17 +925,20 @@ def build_static_ablation_table(
                 consistency[["model", "reported_financial_violation_rate"]],
                 on="model",
                 how="left",
+                validate="one_to_one",
             )
 
     if not boundary_comparison.empty and {"model", "f1"}.issubset(
         boundary_comparison.columns
     ):
+        boundary = boundary_comparison[["model", "f1"]].copy()
+        boundary["model"] = boundary["model"].map(_canonical_model_name)
+        boundary = boundary.drop_duplicates("model", keep="first")
         table = table.merge(
-            boundary_comparison[["model", "f1"]].rename(
-                columns={"f1": "exercise_f1"}
-            ),
+            boundary.rename(columns={"f1": "exercise_f1"}),
             on="model",
             how="left",
+            validate="one_to_one",
         )
     return table.sort_values("test_mae").reset_index(drop=True)
 
@@ -777,28 +1027,10 @@ def build_hypothesis_evidence(
             financial_consistency["model"].eq("Constrained floor residual")
         ]
 
-        def violation_rate(frame: pd.DataFrame) -> float:
-            if frame.empty:
-                return float("nan")
-            row = frame.iloc[0]
-            if "total_bound_violations" in row and "observations" in row:
-                obs = _numeric(row["observations"])
-                return (
-                    _numeric(row["total_bound_violations"]) / obs
-                    if obs > 0
-                    else float("nan")
-                )
-            rate_columns = [
-                column
-                for column in frame.columns
-                if column.endswith("violation_rate")
-            ]
-            values = [_numeric(row[column]) for column in rate_columns]
-            finite = [value for value in values if np.isfinite(value)]
-            return max(finite) if finite else float("nan")
-
-        evidence["direct_violation_rate"] = violation_rate(direct)
-        evidence["constrained_violation_rate"] = violation_rate(constrained)
+        evidence["direct_violation_rate"] = _maximum_violation_rate(direct)
+        evidence["constrained_violation_rate"] = _maximum_violation_rate(
+            constrained
+        )
 
     multitask = results.get("multitask") or {}
     h4 = (multitask.get("hypothesis") or {}).get("evidence", {})
@@ -852,6 +1084,121 @@ def build_hypothesis_evidence(
             evidence["aggregate_ood_mae"] = aggregate
 
     return evidence
+
+
+
+def validate_final_evaluation_semantics(
+    static_pricing: pd.DataFrame,
+    financial_consistency: pd.DataFrame,
+    ood_comparison: pd.DataFrame,
+    runtime_comparison: pd.DataFrame,
+    static_ablation: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Validate the evidence layer after file-level artifact validation."""
+
+    checks: list[dict[str, Any]] = []
+
+    def add(name: str, valid: bool, details: str) -> None:
+        checks.append(
+            {
+                "check": name,
+                "valid": bool(valid),
+                "details": details,
+            }
+        )
+
+    direct = static_pricing.loc[
+        static_pricing.get("model", pd.Series(dtype=str)).eq("Direct MLP")
+    ]
+    direct_source = (
+        _source_string(direct["source_notebook"].iloc[0])
+        if not direct.empty and "source_notebook" in direct.columns
+        else ""
+    )
+    add(
+        "direct_model_uses_notebook_04",
+        direct_source == "04",
+        f"resolved source={direct_source or 'missing'}",
+    )
+
+    direct_consistency = financial_consistency.loc[
+        financial_consistency.get("model", pd.Series(dtype=str)).eq("Direct MLP")
+    ]
+    constrained_consistency = financial_consistency.loc[
+        financial_consistency.get("model", pd.Series(dtype=str)).eq(
+            "Constrained floor residual"
+        )
+    ]
+    direct_rate = _maximum_violation_rate(direct_consistency)
+    constrained_rate = _maximum_violation_rate(constrained_consistency)
+    add(
+        "direct_violation_rate_available",
+        np.isfinite(direct_rate),
+        f"rate={direct_rate}",
+    )
+    add(
+        "constrained_violation_rate_available",
+        np.isfinite(constrained_rate),
+        f"rate={constrained_rate}",
+    )
+
+    ood_duplicates = (
+        int(ood_comparison.duplicated(["model", "regime"]).sum())
+        if not ood_comparison.empty
+        and {"model", "regime"}.issubset(ood_comparison.columns)
+        else 0
+    )
+    add(
+        "ood_model_regime_rows_are_unique",
+        ood_duplicates == 0,
+        f"duplicate_rows={ood_duplicates}",
+    )
+    prefixed_regimes = (
+        ood_comparison["regime"]
+        .astype(str)
+        .str.startswith(("american_put_ood_", "ood_"))
+        .sum()
+        if not ood_comparison.empty and "regime" in ood_comparison.columns
+        else 0
+    )
+    add(
+        "ood_regime_names_are_normalized",
+        int(prefixed_regimes) == 0,
+        f"prefixed_rows={int(prefixed_regimes)}",
+    )
+
+    runtime_keys = ["model", "observations", "cost_type", "device"]
+    runtime_duplicates = (
+        int(runtime_comparison.duplicated(runtime_keys).sum())
+        if not runtime_comparison.empty
+        and set(runtime_keys).issubset(runtime_comparison.columns)
+        else 0
+    )
+    add(
+        "runtime_benchmarks_are_unique",
+        runtime_duplicates == 0,
+        f"duplicate_rows={runtime_duplicates}",
+    )
+
+    if static_ablation is not None and not static_ablation.empty:
+        for model in (
+            "Multi-task constrained residual",
+            "Final integrated constrained price",
+        ):
+            match = static_ablation.loc[static_ablation["model"].eq(model)]
+            value = (
+                _numeric(match["exercise_f1"].iloc[0])
+                if not match.empty and "exercise_f1" in match.columns
+                else float("nan")
+            )
+            add(
+                f"{model}_exercise_f1_available",
+                np.isfinite(value),
+                f"f1={value}",
+            )
+
+    return pd.DataFrame(checks)
+
 
 
 def build_literature_handoff(
@@ -988,4 +1335,5 @@ __all__ = [
     "flatten_mapping",
     "load_project_results",
     "metric_inventory_from_json_files",
+    "validate_final_evaluation_semantics",
 ]
