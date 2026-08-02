@@ -144,10 +144,15 @@ class MultiTaskPricingLoss(nn.Module):
             sample_weight,
         )
 
+        positive_class_weight = self.positive_class_weight.to(
+            device=exercise_logits.device,
+            dtype=exercise_logits.dtype,
+        )
+
         classification_elements = nn.functional.binary_cross_entropy_with_logits(
             exercise_logits,
             exercise_target,
-            pos_weight=self.positive_class_weight.to(exercise_logits.dtype),
+            pos_weight=positive_class_weight,
             reduction="none",
         )
         classification_loss = self._weighted_mean(
