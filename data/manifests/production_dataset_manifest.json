@@ -1,6 +1,6 @@
 {
   "manifest_version": 1,
-  "created_at_utc": "2026-07-27T12:06:25.134516+00:00",
+  "created_at_utc": "2026-08-03T11:20:42.267959+00:00",
   "project": "deep_learning_american_option_pricing",
   "generation_config": {
     "core_observations": 1000000,
@@ -22,7 +22,7 @@
   "components": [
     {
       "name": "core",
-      "path": "data/generated/american_put_core.parquet",
+      "path": "D:\\Users\\kamen.dimitrov\\Desktop\\SOFTUNI\\AI_and_ML_upskill_program\\Deep_Learning\\deep_learning_american_option_pricing\\data\\generated\\american_put_core.parquet",
       "observations": 1000000,
       "start_id": 0,
       "end_id": 999999,
@@ -38,7 +38,7 @@
     },
     {
       "name": "boundary",
-      "path": "data/generated/american_put_boundary.parquet",
+      "path": "D:\\Users\\kamen.dimitrov\\Desktop\\SOFTUNI\\AI_and_ML_upskill_program\\Deep_Learning\\deep_learning_american_option_pricing\\data\\generated\\american_put_boundary.parquet",
       "observations": 250000,
       "start_id": 1000000,
       "end_id": 1249999,
@@ -54,7 +54,7 @@
     },
     {
       "name": "ood_high_volatility",
-      "path": "data/generated/american_put_ood_high_volatility.parquet",
+      "path": "D:\\Users\\kamen.dimitrov\\Desktop\\SOFTUNI\\AI_and_ML_upskill_program\\Deep_Learning\\deep_learning_american_option_pricing\\data\\generated\\american_put_ood_high_volatility.parquet",
       "observations": 50000,
       "start_id": 1250000,
       "end_id": 1299999,
@@ -68,7 +68,7 @@
     },
     {
       "name": "ood_extreme_moneyness",
-      "path": "data/generated/american_put_ood_extreme_moneyness.parquet",
+      "path": "D:\\Users\\kamen.dimitrov\\Desktop\\SOFTUNI\\AI_and_ML_upskill_program\\Deep_Learning\\deep_learning_american_option_pricing\\data\\generated\\american_put_ood_extreme_moneyness.parquet",
       "observations": 50000,
       "start_id": 1300000,
       "end_id": 1349999,
@@ -82,7 +82,7 @@
     },
     {
       "name": "ood_long_maturity",
-      "path": "data/generated/american_put_ood_long_maturity.parquet",
+      "path": "D:\\Users\\kamen.dimitrov\\Desktop\\SOFTUNI\\AI_and_ML_upskill_program\\Deep_Learning\\deep_learning_american_option_pricing\\data\\generated\\american_put_ood_long_maturity.parquet",
       "observations": 50000,
       "start_id": 1350000,
       "end_id": 1399999,
@@ -96,7 +96,7 @@
     },
     {
       "name": "ood_rate_dividend",
-      "path": "data/generated/american_put_ood_rate_dividend.parquet",
+      "path": "D:\\Users\\kamen.dimitrov\\Desktop\\SOFTUNI\\AI_and_ML_upskill_program\\Deep_Learning\\deep_learning_american_option_pricing\\data\\generated\\american_put_ood_rate_dividend.parquet",
       "observations": 50000,
       "start_id": 1400000,
       "end_id": 1449999,

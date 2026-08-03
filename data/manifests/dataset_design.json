@@ -2,101 +2,187 @@
   "manifest_version": 1,
   "status": "approved_design_before_production_generation",
   "random_seed": 42,
-  "core_dataset": {
-    "planned_observations": 100000,
-    "sampling": "randomized_latin_hypercube",
-    "strike": 100.0,
-    "parameter_ranges": {
-      "moneyness": [
-        0.5,
-        1.5
-      ],
-      "time_to_maturity": [
-        0.019178082191780823,
-        2.0
-      ],
-      "volatility": [
-        0.05,
-        0.8
-      ],
-      "risk_free_rate": [
-        0.0,
-        0.1
-      ],
-      "dividend_yield": [
-        0.0,
-        0.08
-      ]
-    },
-    "tree_steps": "Use the production value selected in Notebook 02"
-  },
-  "boundary_dataset": {
-    "planned_observations": 30000,
-    "normalized_gap_threshold": 0.01,
-    "selection_metric": "abs(intrinsic_value-continuation_value)/strike"
-  },
-  "split": {
-    "train": 0.7,
-    "validation": 0.15,
-    "test": 0.15,
-    "seed": 42,
-    "stratify_column": "exercise_now"
-  },
-  "ood_sets": [
+  "total_observations": 1450000,
+  "in_domain_observations": 1250000,
+  "ood_observations": 200000,
+  "tree_steps": 250,
+  "chunk_size": 25000,
+  "strike": 100.0,
+  "components": [
     {
-      "name": "high_volatility",
-      "description": "Volatility above the core training maximum.",
-      "ranges": {
+      "name": "core",
+      "planned_observations": 1000000,
+      "start_id": 0,
+      "end_id": 999999,
+      "purpose": "Primary interpolation domain.",
+      "split_eligible": true,
+      "parameter_ranges": {
+        "moneyness": [
+          0.5,
+          1.5
+        ],
+        "time_to_maturity": [
+          0.019178082191780823,
+          2.0
+        ],
+        "volatility": [
+          0.05,
+          0.8
+        ],
+        "risk_free_rate": [
+          0.0,
+          0.1
+        ],
+        "dividend_yield": [
+          0.0,
+          0.08
+        ]
+      }
+    },
+    {
+      "name": "boundary",
+      "planned_observations": 250000,
+      "start_id": 1000000,
+      "end_id": 1249999,
+      "purpose": "Exercise-boundary-focused in-domain sample.",
+      "split_eligible": true,
+      "parameter_ranges": {
+        "moneyness": [
+          0.45,
+          1.1
+        ],
+        "time_to_maturity": [
+          0.019178082191780823,
+          1.5
+        ],
+        "volatility": [
+          0.05,
+          0.6
+        ],
+        "risk_free_rate": [
+          0.01,
+          0.15
+        ],
+        "dividend_yield": [
+          0.0,
+          0.06
+        ]
+      }
+    },
+    {
+      "name": "ood_high_volatility",
+      "planned_observations": 50000,
+      "start_id": 1250000,
+      "end_id": 1299999,
+      "purpose": "Volatility above the core-domain maximum.",
+      "split_eligible": false,
+      "parameter_ranges": {
+        "moneyness": [
+          0.5,
+          1.5
+        ],
+        "time_to_maturity": [
+          0.019178082191780823,
+          2.0
+        ],
         "volatility": [
           0.8,
           1.2
+        ],
+        "risk_free_rate": [
+          0.0,
+          0.1
+        ],
+        "dividend_yield": [
+          0.0,
+          0.08
         ]
       }
     },
     {
-      "name": "long_maturity",
-      "description": "Maturities beyond the two-year core training horizon.",
-      "ranges": {
+      "name": "ood_extreme_moneyness",
+      "planned_observations": 50000,
+      "start_id": 1300000,
+      "end_id": 1349999,
+      "purpose": "Balanced deep-ITM and deep-OTM contracts.",
+      "split_eligible": false,
+      "parameter_ranges": {
+        "moneyness": [
+          0.5,
+          1.5
+        ],
+        "time_to_maturity": [
+          0.019178082191780823,
+          2.0
+        ],
+        "volatility": [
+          0.05,
+          0.8
+        ],
+        "risk_free_rate": [
+          0.0,
+          0.1
+        ],
+        "dividend_yield": [
+          0.0,
+          0.08
+        ]
+      }
+    },
+    {
+      "name": "ood_long_maturity",
+      "planned_observations": 50000,
+      "start_id": 1350000,
+      "end_id": 1399999,
+      "purpose": "Maturities above the core-domain maximum.",
+      "split_eligible": false,
+      "parameter_ranges": {
+        "moneyness": [
+          0.5,
+          1.5
+        ],
         "time_to_maturity": [
           2.0,
           4.0
+        ],
+        "volatility": [
+          0.05,
+          0.8
+        ],
+        "risk_free_rate": [
+          0.0,
+          0.1
+        ],
+        "dividend_yield": [
+          0.0,
+          0.08
         ]
       }
     },
     {
-      "name": "deep_in_the_money",
-      "description": "Spot-to-strike ratios below the core domain.",
-      "ranges": {
+      "name": "ood_rate_dividend",
+      "planned_observations": 50000,
+      "start_id": 1400000,
+      "end_id": 1449999,
+      "purpose": "Jointly elevated risk-free and dividend rates.",
+      "split_eligible": false,
+      "parameter_ranges": {
         "moneyness": [
-          0.25,
-          0.5
-        ]
-      }
-    },
-    {
-      "name": "deep_out_of_the_money",
-      "description": "Spot-to-strike ratios above the core domain.",
-      "ranges": {
-        "moneyness": [
-          1.5,
+          0.5,
+          1.5
+        ],
+        "time_to_maturity": [
+          0.019178082191780823,
           2.0
-        ]
-      }
-    },
-    {
-      "name": "high_interest_rate",
-      "description": "Interest rates above the core training maximum.",
-      "ranges": {
+        ],
+        "volatility": [
+          0.05,
+          0.8
+        ],
         "risk_free_rate": [
           0.1,
           0.2
-        ]
-      }
-    },
-    {
-      "name": "high_dividend_yield",
-      "description": "Dividend yields above the core training maximum.",
-      "ranges": {
+        ],
         "dividend_yield": [
           0.08,
           0.15
@@ -104,6 +190,13 @@
       }
     }
   ],
+  "split": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15,
+    "seed": 42,
+    "stratify_column": "exercise_now"
+  },
   "pilot_audit": {
     "pilot_source": "Loaded from Notebook 02 output",
     "pilot_observations": 2000,
