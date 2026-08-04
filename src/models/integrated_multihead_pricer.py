@@ -77,6 +77,29 @@ class IntegratedMultiHeadConfig:
         values.update(overrides)
         return cls(**values)
 
+    @classmethod
+    def from_dict(
+        cls,
+        raw: Mapping[str, object],
+    ) -> "IntegratedMultiHeadConfig":
+        """Reconstruct a configuration from saved JSON/checkpoint metadata."""
+
+        if not isinstance(raw, Mapping):
+            raise TypeError("raw must be a mapping.")
+        values = dict(raw)
+        tuple_fields = (
+            "shared_hidden_sizes",
+            "batch_norm_after",
+            "residual_head_sizes",
+            "direct_head_sizes",
+            "continuation_head_sizes",
+            "exercise_head_sizes",
+        )
+        for field in tuple_fields:
+            if field in values:
+                values[field] = tuple(values[field])
+        return cls(**values)
+
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
@@ -266,12 +289,7 @@ def copy_compatible_backbone_weights(
     *,
     source_prefix: str = "backbone.",
 ) -> dict[str, object]:
-    """Copy shape-compatible Step 6 backbone parameters into the final model.
-
-    The function is deliberately conservative: only keys under ``source_prefix``
-    with an exact name and shape match are copied. It returns an audit record so
-    the warm-start experiment remains transparent.
-    """
+    """Copy shape-compatible Step 6 backbone parameters into the final model."""
 
     target_state = target_model.state_dict()
     copied: list[str] = []

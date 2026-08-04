@@ -33,6 +33,14 @@ class MultiHeadLossWeights:
         if sum(values.values()) <= 0.0:
             raise ValueError("At least one multi-head loss weight must be positive.")
 
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, object]) -> "MultiHeadLossWeights":
+        """Reconstruct loss weights from saved metadata."""
+
+        if not isinstance(raw, Mapping):
+            raise TypeError("raw must be a mapping.")
+        return cls(**{key: float(value) for key, value in raw.items()})
+
     def to_dict(self) -> dict[str, float]:
         return asdict(self)
 
@@ -50,6 +58,17 @@ class MultiHeadLossConfig:
             raise ValueError("regression_beta cannot be negative.")
         if self.decision_sharpness <= 0.0:
             raise ValueError("decision_sharpness must be positive.")
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, object]) -> "MultiHeadLossConfig":
+        """Reconstruct a loss configuration from checkpoint metadata."""
+
+        if not isinstance(raw, Mapping):
+            raise TypeError("raw must be a mapping.")
+        values = dict(raw)
+        raw_weights = values.get("weights", {})
+        values["weights"] = MultiHeadLossWeights.from_dict(raw_weights)
+        return cls(**values)
 
     def to_dict(self) -> dict[str, object]:
         return {

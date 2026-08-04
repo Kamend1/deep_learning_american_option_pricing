@@ -9,7 +9,7 @@
 [![Jupyter](https://img.shields.io/badge/Jupyter-Research%20Notebooks-F37626?logo=jupyter&logoColor=white)](https://jupyter.org/)
 [![Tests](https://img.shields.io/badge/Tests-pytest-0A9EDC?logo=pytest&logoColor=white)](https://pytest.org/)
 [![License](https://img.shields.io/badge/License-MIT-2EA44F.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Research%20in%20Progress-orange)](#project-status)
+[![Status](https://img.shields.io/badge/Status-Notebooks%2001--07%20Validated-2EA44F)](#project-status)
 
 **SoftUni Deep Learning Final Project**
 
@@ -86,7 +86,7 @@ The Black–Scholes price is used as:
 
 ### American optimal stopping
 
-At time \(t\), the American put holder compares immediate exercise value
+At time $t$, the American put holder compares immediate exercise value
 
 $$
 I(S_t)=\max(K-S_t,0)
@@ -160,6 +160,20 @@ The hypotheses are specified before neural-network training to reduce retrospect
 - **H4 — Multi-task learning:** A joint price-and-exercise model will estimate the exercise boundary more accurately than a price-only model.
 - **H5 — Computational acceleration:** Batched neural inference will be substantially faster than repeated high-resolution CRR valuation.
 - **H6 — Out-of-domain deterioration:** All neural models will perform materially worse outside the training domain.
+
+### Current empirical findings
+
+The production dataset has been generated and the latest CPU load-mode executions of Notebooks 04–07 complete without errors.
+
+Current results are:
+
+- **H1 supported:** the direct MLP materially outperforms the European Black–Scholes proxy for in-domain American put pricing;
+- **H2 supported:** early-exercise-premium decomposition materially improves pricing accuracy;
+- **H3 supported:** the financial-floor residual model eliminates lower-bound violations and is the strongest static pricing model tested so far;
+- **H4 not supported:** the multi-task price-and-exercise model does not improve exercise classification and worsens pricing relative to the specialized models;
+- **Notebook 07 result:** classical contract-specific Longstaff–Schwartz outperforms the amortized neural continuation policy in the current in-domain and OOD experiments.
+
+The final H5 and H6 decisions remain reserved for Notebook 09, where all models and runtime results will be consolidated under one evaluation framework.
 
 ---
 
@@ -471,6 +485,8 @@ deep_learning_american_option_pricing/
 │   ├── training/
 │   │   ├── loops.py
 │   │   ├── checkpointing.py
+│   │   ├── artifact_management.py
+│   │   ├── dependency_fingerprints.py
 │   │   ├── losses.py
 │   │   ├── multitask_losses.py
 │   │   ├── multitask_loops.py
@@ -478,19 +494,24 @@ deep_learning_american_option_pricing/
 │   │   ├── multihead_losses.py
 │   │   └── multihead_loops.py
 │   │
-│   └── evaluation/
-│       ├── regression_metrics.py
-│       ├── financial_checks.py
-│       ├── model_comparison.py
-│       ├── classification_metrics.py
-│       ├── exercise_boundary.py
-│       ├── lsm_comparison.py
-│       ├── internal_consistency.py
-│       ├── integrated_model_comparison.py
-│       ├── artifact_registry.py
-│       ├── final_project_evaluation.py
-│       ├── hypothesis_testing.py
-│       └── final_reporting.py
+│   ├── evaluation/
+│   │   ├── regression_metrics.py
+│   │   ├── financial_checks.py
+│   │   ├── model_comparison.py
+│   │   ├── classification_metrics.py
+│   │   ├── exercise_boundary.py
+│   │   ├── exercise_boundary_support.py
+│   │   ├── inference_benchmark.py
+│   │   ├── lsm_comparison.py
+│   │   ├── lsm_experiment_support.py
+│   │   ├── internal_consistency.py
+│   │   ├── integrated_model_comparison.py
+│   │   ├── artifact_registry.py
+│   │   ├── final_project_evaluation.py
+│   │   ├── hypothesis_testing.py
+│   │   └── final_reporting.py
+│   │
+│   └── json_export.py
 │
 ├── tests/
 │   ├── integration/
@@ -533,7 +554,7 @@ deep_learning_american_option_pricing/
 └── README.md
 ```
 
-Notebook 09 and the final artifact-audit, aggregation, and write-up skeleton are implemented. Empirical tables remain pending until the production runs are completed.
+The production dataset and the trained artifacts used by Notebooks 04–07 are available through DVC. Notebook 08 and Notebook 09 remain the final integration and synthesis stages.
 
 ---
 
@@ -572,39 +593,39 @@ The notebooks form one sequential academic workflow.
 
 - loads the frozen production split;
 - verifies features, targets, and dataloaders;
-- trains the direct MLP benchmark;
-- compares MSE and Smooth L1 loss;
+- trains and reloads the direct MLP benchmark;
 - saves the best checkpoint and feature scaler;
-- reports in-domain metrics;
-- evaluates segmented errors;
-- measures financial-consistency violations;
-- evaluates out-of-domain deterioration;
-- benchmarks neural inference against CRR pricing.
+- reports in-domain, segmented, financial-consistency, OOD, and inference results;
+- establishes that direct neural pricing materially improves on the European proxy;
+- supports H1.
 
 ### Notebook 05 — Early-exercise-premium models
 
 - compares direct-price and residual target formulations;
 - trains unconstrained, non-negative-premium, and financial-floor residual models;
-- evaluates weighted and boundary-aware losses;
-- tests financial lower-bound violations;
-- evaluates H2 and H3.
+- selects the floor candidate using a common unweighted validation metric;
+- verifies checkpoint, scaler, and production-manifest compatibility;
+- shows that the constrained floor-residual model is the strongest static pricing model tested;
+- supports H2 and H3.
 
 ### Notebook 06 — Exercise-boundary multi-task model
 
 - validates exercise labels and class balance;
 - trains an exercise-only classifier;
 - trains a shared price-and-exercise network;
-- reconstructs exercise boundaries;
-- evaluates boundary-region pricing and H4.
+- evaluates signed boundary margins, decision regret, one-factor boundary sweeps, OOD behavior, and inference speed;
+- shows that the specialized classifier and pricing model outperform the shared multi-task model;
+- does not support H4.
 
 ### Notebook 07 — Classical and neural Longstaff–Schwartz
 
 - validates risk-neutral GBM simulation;
-- compares polynomial and Laguerre classical LSM policies;
-- studies path-count and exercise-date convergence;
-- trains amortized neural continuation networks;
+- selects the classical basis on validation contracts;
+- studies repeated-seed path-count and exercise-date convergence;
+- trains and reloads amortized neural continuation networks;
 - evaluates policies on independent held-out paths and contracts;
-- reports OOD, multi-seed, stopping-policy, and runtime results.
+- reports antithetic-aware uncertainty, stopping-policy, segmented, OOD, robustness, and runtime results;
+- finds that classical contract-specific LSM outperforms the current amortized neural policy.
 
 ### Notebook 08 — Final integrated static multi-head model
 
@@ -882,8 +903,7 @@ python scripts/validate_production_project.py --allow-missing
 python scripts/build_final_results.py
 ```
 
-Notebook 09 never fabricates unavailable results. Missing evidence is marked as
-`PENDING` or produces an `Inconclusive` hypothesis decision.
+Notebook 09 never fabricates unavailable results. Missing evidence is marked as `PENDING` or produces an `Inconclusive` hypothesis decision.
 
 ---
 
@@ -903,7 +923,7 @@ Run the notebooks sequentially:
 09_final_evaluation.ipynb
 ```
 
-At the current stage, Notebooks 01–08 and their supporting implementation modules are prepared. Full-profile data generation, model training, out-of-domain evaluation, and Notebook 09 still need to be executed before the final conclusions are locked.
+The production dataset is generated, and Notebooks 01–07 have been executed in their latest load-mode configuration. Notebooks 04–07 were also revalidated on CPU with `FORCE_TRAIN = False` after the shared artifact-management and evaluation utilities were moved into `src/`. Notebook 08 and Notebook 09 remain the final integration, cross-model evaluation, and project-synthesis stages.
 
 ---
 
@@ -1017,61 +1037,55 @@ The literature review covers direct supervised pricing, recurrent architectures,
 
 ## Project status
 
-### Completed implementation
+### Completed and validated
 
 - project architecture and academic research design;
 - Black–Scholes call and put pricing;
 - European and American CRR pricing;
-- pricing diagnostics and financial validation;
-- convergence and runtime framework;
-- synthetic pilot-data generation;
-- dataset-quality auditing;
-- deterministic split design;
-- out-of-domain framework;
-- 1.45 million observation production-data design;
-- chunked, restartable, Numba-accelerated generation pipeline;
-- PyTorch Dataset and DataLoader pipeline;
-- direct MLP architecture;
-- reusable training and checkpointing utilities;
-- regression metrics and financial-consistency checks;
-- direct, premium, constrained residual, exercise-classification, and multi-task architectures;
-- GBM simulation with antithetic variates and moment validation;
-- classical Longstaff–Schwartz with independent policy and valuation paths;
-- amortized neural continuation-value policy by exercise index;
-- LSM pricing, confidence-interval, stopping-policy, OOD, and runtime comparisons;
-- final integrated four-head static architecture;
-- multi-objective loss presets and internal-consistency penalties;
-- scratch and Step 6-compatible warm-start support;
-- non-interactive final-model training script;
-- tiered pytest configuration with unit and integration markers;
-- notebooks and Markdown documentation for Steps 1–8;
-- unit and integration tests for pricing, data, neural models, exercise boundaries, simulation, LSM, and the final static pipeline.
+- QuantLib cross-check and pricing diagnostics;
+- 1.45 million observation production dataset;
+- deterministic train, validation, test, boundary, and OOD components;
+- chunked, restartable, Numba-accelerated data generation;
+- DVC-managed production data and trained artifacts in public Cloudflare R2 storage;
+- reusable PyTorch datasets, loaders, checkpoints, manifests, dependency fingerprints, and shared evaluation utilities;
+- direct MLP pricing benchmark;
+- unconstrained premium, non-negative premium, and constrained floor-residual models;
+- standalone exercise classifier and multi-task price-and-exercise model;
+- GBM simulation and classical Longstaff–Schwartz;
+- amortized neural Longstaff–Schwartz continuation policy;
+- in-domain, segmented, financial-consistency, OOD, boundary, robustness, uncertainty, and runtime evaluation for Notebooks 04–07;
+- clean CPU load-mode execution of Notebooks 04–07 with `FORCE_TRAIN = False`;
+- unit and integration-test structure for pricing, data, neural models, exercise boundaries, simulation, LSM, and the final static pipeline.
 
-### Pending execution and empirical validation
+### Current research conclusions
 
-- full production dataset generation;
-- direct MLP training on the full in-domain dataset;
-- final in-domain and out-of-domain metrics;
-- financial-violation analysis from trained-model predictions;
-- CPU and GPU inference-speed benchmark.
+- H1 is supported;
+- H2 is supported;
+- H3 is supported;
+- H4 is not supported;
+- the constrained floor-residual network is the strongest static pricing model tested so far;
+- the standalone classifier is preferred for the root exercise decision;
+- classical contract-specific LSM is preferred to the current amortized neural LSM implementation;
+- OOD deterioration remains material and is treated as a core limitation rather than hidden by aggregate in-domain metrics.
 
-### Completed final architecture
+### Remaining work
 
+- execute and finalize Notebook 08 integrated multi-head ablations;
+- run Notebook 09 cross-model aggregation and formal H1–H6 decisions;
+- compare all final static and simulation-based models on aligned evidence;
+- complete the consolidated academic discussion, limitations, and final conclusions;
+- perform one final full training-mode validation in dependency order before submission;
+- rebuild and publish the final DVC artifact package after that validation.
+
+### Final architecture and reporting framework already implemented
+
+- Notebook 08 integrated four-head architecture;
 - Notebook 09 final-evaluation skeleton and Markdown twin;
 - artifact registry with safe pending-state handling;
 - production validation and final-results build scripts;
 - predefined H1–H6 decision framework;
 - full-project integration smoke test;
-- final results and academic-writeup checklists.
-
-### Planned execution and writing
-
-- final-profile execution of all static and neural LSM experiments;
-- final integrated-model loss and warm-start ablations;
-- cross-model evaluation on aligned static and LSM contract grids;
-- evidence-based H1–H6 decisions in Notebook 09;
-- section conclusions and notebook-to-notebook handoffs;
-- consolidated academic paper and conclusions.
+- final-results and academic-writeup checklists.
 
 ---
 
