@@ -31,6 +31,9 @@ venv.bak/
 .profile_default/
 .ipython/
 
+# VS Code/Jupyter virtual documents
+/.virtual_documents/
+
 # Optional notebook autosaves / temporary exports
 *.nbconvert.ipynb
 *.html.tmp
