@@ -1,8 +1,10 @@
 """Canonical artifact discovery and schema validation for Notebook 09.
 
-Notebook 09 consumes explicit final-result packages produced by Notebooks 04-08.
-The registry does not treat Notebook 09's own exports as upstream evidence and it
-validates useful schema content rather than file existence alone.
+This registry describes the current final-result packages produced by
+Notebooks 04-08.  It validates file presence, basic readability, declared
+package status, expected notebook identity, execution profile, JSON fields,
+and table schemas.  Cross-file coherence and prediction alignment are handled
+by :mod:`src.evaluation.final_lineage_audit`.
 """
 
 from __future__ import annotations
@@ -16,14 +18,16 @@ import pandas as pd
 
 
 ArtifactLoader = Literal["json", "csv", "parquet", "torch", "joblib", "any"]
+JsonRootType = Literal["mapping", "list", "any"]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ArtifactSpec:
-    """Description of one logical project artifact."""
+    """Contract for one logical project artifact."""
 
     name: str
     category: str
+    notebook: str | None
     candidate_paths: tuple[str, ...]
     required_for_final: bool = True
     loader: ArtifactLoader = "any"
@@ -31,21 +35,622 @@ class ArtifactSpec:
     required_key_paths: tuple[str, ...] = ()
     required_columns: tuple[str, ...] = ()
     minimum_rows: int = 0
-    json_root_type: Literal["mapping", "list", "any"] = "any"
+    json_root_type: JsonRootType = "any"
+    expected_notebook: str | None = None
+    allowed_profiles: tuple[str, ...] = ()
+    require_complete_status: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ArtifactStatus:
     """Resolved and validated state of one artifact specification."""
 
     name: str
     category: str
+    notebook: str | None
     required_for_final: bool
     found: bool
     valid: bool
     resolved_path: str | None
     loader: str
+    rows: int | None
     notes: str
+
+
+def _spec(
+    name: str,
+    category: str,
+    notebook: str | None,
+    *candidate_paths: str,
+    **kwargs: Any,
+) -> ArtifactSpec:
+    return ArtifactSpec(
+        name=name,
+        category=category,
+        notebook=notebook,
+        candidate_paths=tuple(candidate_paths),
+        **kwargs,
+    )
+
+
+def default_artifact_registry() -> tuple[ArtifactSpec, ...]:
+    """Return the current final-evaluation artifact contract.
+
+    The contract intentionally includes both aggregate result packages and the
+    prediction files required for a paired cross-notebook comparison.
+    """
+
+    return (
+        _spec(
+            "production_dataset_manifest",
+            "data",
+            None,
+            "data/manifests/production_dataset_manifest.json",
+            loader="json",
+            description="Production dataset design and component metadata.",
+            json_root_type="mapping",
+        ),
+        # Notebook 04 -----------------------------------------------------
+        _spec(
+            "nb04_final_metrics",
+            "final_metrics",
+            "04",
+            "artifacts/direct_mlp/final_metrics.json",
+            loader="json",
+            description="Direct model final result package.",
+            required_key_paths=(
+                "schema_version",
+                "status",
+                "notebook",
+                "training_profile",
+                "selected_model",
+                "checkpoint",
+                "pricing.black_scholes_proxy",
+                "pricing.direct_mlp",
+                "financial_consistency",
+                "ood",
+                "runtime",
+            ),
+            json_root_type="mapping",
+            expected_notebook="04_direct_mlp_pricer",
+            allowed_profiles=("full",),
+            require_complete_status=True,
+        ),
+        _spec(
+            "nb04_test_predictions",
+            "test_predictions",
+            "04",
+            "artifacts/direct_mlp/test_predictions.parquet",
+            "artifacts/direct_mlp/test_predictions.csv",
+            loader="any",
+            description="Notebook 04 predictions on the common static test set.",
+            required_columns=(
+                "sample_id",
+                "normalized_american_price",
+                "direct_mlp_prediction",
+            ),
+            minimum_rows=1,
+        ),
+        _spec(
+            "nb04_checkpoint",
+            "checkpoint",
+            "04",
+            "artifacts/direct_mlp/best_direct_mlp.pt",
+            loader="torch",
+            description="Canonical Notebook 04 checkpoint.",
+        ),
+        _spec(
+            "nb04_training_manifest",
+            "training_manifest",
+            "04",
+            "artifacts/direct_mlp/training_complete.json",
+            loader="json",
+            required_key_paths=(
+                "status",
+                "notebook",
+                "training_profile",
+                "checkpoint",
+            ),
+            json_root_type="mapping",
+            expected_notebook="04_direct_mlp_pricer",
+            allowed_profiles=("full",),
+            require_complete_status=True,
+        ),
+        # Notebook 05 -----------------------------------------------------
+        _spec(
+            "nb05_final_metrics",
+            "final_metrics",
+            "05",
+            "artifacts/premium_models/final_metrics.json",
+            loader="json",
+            description="Residual-model final result package.",
+            required_key_paths=(
+                "schema_version",
+                "status",
+                "notebook",
+                "training_profile",
+                "selected_model",
+                "selected_candidate",
+                "checkpoint",
+                "pricing",
+                "premium_error",
+                "financial_consistency",
+                "segmented_results",
+                "ood",
+                "runtime",
+                "hypotheses",
+            ),
+            json_root_type="mapping",
+            expected_notebook="05_early_exercise_premium_model",
+            allowed_profiles=("full",),
+            require_complete_status=True,
+        ),
+        _spec(
+            "nb05_test_predictions",
+            "test_predictions",
+            "05",
+            "artifacts/premium_models/test_predictions.parquet",
+            "artifacts/premium_models/test_predictions.csv",
+            loader="any",
+            description="Notebook 05 predictions on the common static test set.",
+            required_columns=(
+                "sample_id",
+                "normalized_american_price",
+                "constrained_floor_prediction",
+            ),
+            minimum_rows=1,
+        ),
+        _spec(
+            "nb05_checkpoint",
+            "checkpoint",
+            "05",
+            "artifacts/premium_models/best_premium_model.pt",
+            loader="torch",
+            description="Canonical validation-selected Notebook 05 checkpoint.",
+        ),
+        _spec(
+            "nb05_training_manifest",
+            "training_manifest",
+            "05",
+            "artifacts/premium_models/training_complete.json",
+            loader="json",
+            required_key_paths=(
+                "status",
+                "notebook",
+                "training_profile",
+                "dependencies",
+                "candidates",
+            ),
+            json_root_type="mapping",
+            expected_notebook="05_early_exercise_premium_model",
+            allowed_profiles=("full",),
+            require_complete_status=True,
+        ),
+        # Notebook 06 -----------------------------------------------------
+        _spec(
+            "nb06_final_metrics",
+            "final_metrics",
+            "06",
+            "artifacts/multitask_model/final_metrics.json",
+            loader="json",
+            description="Exercise and multi-task final result package.",
+            required_key_paths=(
+                "schema_version",
+                "status",
+                "notebook",
+                "training_profile",
+                "selected_candidate",
+                "checkpoint",
+                "dependencies",
+                "thresholds",
+                "classification",
+                "pricing",
+                "boundary_bands",
+                "boundary_pricing",
+                "boundary_location",
+                "financial_consistency",
+                "ood_classification",
+                "ood_pricing",
+                "inference",
+                "hypothesis",
+            ),
+            json_root_type="mapping",
+            expected_notebook="06_exercise_boundary_analysis",
+            allowed_profiles=("full",),
+            require_complete_status=True,
+        ),
+        _spec(
+            "nb06_test_predictions",
+            "test_predictions",
+            "06",
+            "artifacts/multitask_model/test_predictions.parquet",
+            "artifacts/multitask_model/test_predictions.csv",
+            loader="any",
+            description="Notebook 06 predictions on the common static test set.",
+            required_columns=(
+                "sample_id",
+                "normalized_american_price",
+                "exercise_now",
+                "classifier_probability",
+                "multitask_probability",
+                "predicted_normalized_american_price",
+                "price_only_normalized_price",
+            ),
+            minimum_rows=1,
+        ),
+        _spec(
+            "nb06_multitask_checkpoint",
+            "checkpoint",
+            "06",
+            "artifacts/multitask_model/best_multitask_pricer.pt",
+            loader="torch",
+            description="Canonical validation-selected Notebook 06 multi-task checkpoint.",
+        ),
+        _spec(
+            "nb06_classifier_checkpoint",
+            "checkpoint",
+            "06",
+            "artifacts/multitask_model/best_exercise_classifier.pt",
+            loader="torch",
+            description="Notebook 06 specialist exercise classifier.",
+        ),
+        _spec(
+            "nb06_multitask_manifest",
+            "training_manifest",
+            "06",
+            "artifacts/multitask_model/multitask_training_complete.json",
+            loader="json",
+            required_key_paths=(
+                "status",
+                "notebook",
+                "training_profile",
+                "dependencies",
+                "candidates",
+            ),
+            json_root_type="mapping",
+            expected_notebook="06_multitask_model",
+            allowed_profiles=("full",),
+            require_complete_status=True,
+        ),
+        _spec(
+            "nb06_classifier_manifest",
+            "training_manifest",
+            "06",
+            "artifacts/multitask_model/exercise_classifier_complete.json",
+            loader="json",
+            required_key_paths=(
+                "status",
+                "notebook",
+                "training_profile",
+                "dependencies",
+                "checkpoint",
+            ),
+            json_root_type="mapping",
+            expected_notebook="06_exercise_classifier",
+            allowed_profiles=("full",),
+            require_complete_status=True,
+        ),
+        # Notebook 07 -----------------------------------------------------
+        _spec(
+            "nb07_final_metrics",
+            "final_metrics",
+            "07",
+            "artifacts/neural_lsm/final_metrics.json",
+            loader="json",
+            description="Classical and neural LSM final result package.",
+            required_key_paths=(
+                "schema_version",
+                "status",
+                "notebook",
+                "training_profile",
+                "selected_model",
+                "neural_policy_checkpoint",
+                "selected_classical_basis",
+                "selected_classical_degree",
+                "training",
+                "heldout_pricing",
+                "paired_mae_bootstrap",
+                "coverage",
+                "financial_bounds",
+                "policy_summary",
+                "ood_pricing",
+                "ood_policy",
+                "runtime",
+                "runtime_context",
+                "runtime_break_even",
+                "h5_decision",
+            ),
+            json_root_type="mapping",
+            expected_notebook="07_neural_longstaff_schwartz",
+            allowed_profiles=("final",),
+            require_complete_status=True,
+        ),
+        _spec(
+            "nb07_heldout_pricing",
+            "heldout_results",
+            "07",
+            "artifacts/neural_lsm/heldout_pricing_results.parquet",
+            "artifacts/neural_lsm/heldout_pricing_results.csv",
+            "artifacts/neural_lsm/heldout_comparison.csv",
+            loader="any",
+            description="Held-out contract-level pricing results.",
+            required_columns=("contract_id",),
+            minimum_rows=1,
+        ),
+        _spec(
+            "nb07_policy_checkpoint",
+            "checkpoint",
+            "07",
+            "artifacts/neural_lsm/neural_lsm_policy.pt",
+            loader="torch",
+            description="Saved neural continuation policy.",
+        ),
+        _spec(
+            "nb07_training_manifest",
+            "training_manifest",
+            "07",
+            "artifacts/neural_lsm/training_complete.json",
+            loader="json",
+            required_key_paths=(
+                "status",
+                "notebook",
+                "training_profile",
+                "dependencies",
+                "checkpoint",
+            ),
+            json_root_type="mapping",
+            expected_notebook="07_neural_longstaff_schwartz",
+            allowed_profiles=("final",),
+            require_complete_status=True,
+        ),
+        # Notebook 08 -----------------------------------------------------
+        _spec(
+            "nb08_final_metrics",
+            "final_metrics",
+            "08",
+            "artifacts/final_multihead/final_metrics.json",
+            loader="json",
+            description="Integrated static model final result package.",
+            required_key_paths=(
+                "schema_version",
+                "status",
+                "notebook",
+                "training_profile",
+                "selected_scratch_configuration",
+                "preferred_integrated_candidate",
+                "checkpoint",
+                "deployment_checkpoint",
+                "scratch_checkpoint",
+                "authoritative_price_output",
+                "deployment_scope",
+                "fallback_method",
+                "thresholds.exercise_head",
+                "thresholds.continuation_path",
+                "selection",
+                "pricing",
+                "continuation",
+                "classification",
+                "consistency",
+                "boundary",
+                "ood",
+                "runtime",
+                "scratch_benchmark",
+                "integrated_candidate_comparison",
+                "dependencies",
+            ),
+            json_root_type="mapping",
+            expected_notebook="08_final_multihead_model",
+            allowed_profiles=("full",),
+            require_complete_status=True,
+        ),
+        _spec(
+            "nb08_selection",
+            "selection",
+            "08",
+            "artifacts/final_multihead/selection.json",
+            loader="json",
+            required_key_paths=(
+                "schema_version",
+                "configuration",
+                "selected_scratch_configuration",
+                "selected_scratch_checkpoint",
+                "preferred_integrated_candidate",
+                "preferred_integrated_checkpoint",
+                "canonical_checkpoint",
+                "authoritative_price_output",
+                "selection_basis",
+                "test_metrics_used_for_selection",
+                "ood_metrics_used_for_selection",
+                "deployment_scope",
+                "fallback_method",
+                "dependencies",
+            ),
+            json_root_type="mapping",
+        ),
+        _spec(
+            "nb08_test_predictions",
+            "test_predictions",
+            "08",
+            "artifacts/final_multihead/test_predictions.parquet",
+            "artifacts/final_multihead/test_predictions.csv",
+            loader="any",
+            description="Notebook 08 predictions for all four outputs.",
+            required_columns=(
+                "sample_id",
+                "true_normalized_american_price",
+                "predicted_normalized_american_price",
+                "predicted_direct_normalized_american_price",
+                "exercise_target",
+                "exercise_probability",
+                "continuation_exercise_probability",
+                "true_normalized_continuation_value",
+                "predicted_normalized_continuation_value",
+            ),
+            minimum_rows=1,
+        ),
+        _spec(
+            "nb08_boundary_analysis",
+            "boundary_results",
+            "08",
+            "artifacts/final_multihead/boundary_analysis.csv",
+            loader="csv",
+            required_columns=(
+                "decision_path",
+                "boundary_band",
+                "boundary_limit",
+                "observations",
+                "threshold",
+                "accuracy",
+                "balanced_accuracy",
+                "f1",
+                "price_mae",
+                "decision_errors",
+                "total_regret",
+            ),
+            minimum_rows=2,
+        ),
+        _spec(
+            "nb08_runtime",
+            "runtime",
+            "08",
+            "artifacts/final_multihead/runtime_summary.json",
+            loader="json",
+            required_key_paths=(
+                "observations",
+                "median_seconds",
+                "seconds_per_observation",
+                "observations_per_second",
+                "device",
+            ),
+            json_root_type="mapping",
+        ),
+        _spec(
+            "nb08_checkpoint",
+            "checkpoint",
+            "08",
+            "artifacts/final_multihead/best_integrated_multihead.pt",
+            loader="torch",
+            description="Backward-compatible canonical deployment checkpoint.",
+        ),
+        _spec(
+            "nb08_deployment_checkpoint",
+            "checkpoint",
+            "08",
+            "artifacts/final_multihead/best_integrated_deployment.pt",
+            loader="torch",
+            description="Preferred warm-start in-domain deployment checkpoint.",
+        ),
+        _spec(
+            "nb08_scratch_checkpoint",
+            "checkpoint",
+            "08",
+            "artifacts/final_multihead/best_integrated_scratch.pt",
+            loader="torch",
+            description="Balanced scratch winner retained as robustness benchmark.",
+        ),
+        _spec(
+            "nb08_scratch_test_predictions",
+            "test_predictions",
+            "08",
+            "artifacts/final_multihead/scratch_test_predictions.parquet",
+            "artifacts/final_multihead/scratch_test_predictions.csv",
+            loader="any",
+            description="Balanced scratch predictions on the common static test set.",
+            required_columns=(
+                "sample_id",
+                "true_normalized_american_price",
+                "predicted_normalized_american_price",
+                "predicted_direct_normalized_american_price",
+                "exercise_target",
+                "exercise_probability",
+                "continuation_exercise_probability",
+            ),
+            minimum_rows=1,
+        ),
+        _spec(
+            "nb08_deployment_selection",
+            "selection",
+            "08",
+            "artifacts/final_multihead/deployment_selection.json",
+            loader="json",
+            required_key_paths=(
+                "preferred_integrated_candidate",
+                "selection_scope",
+                "selection_rule",
+                "all_checks_passed",
+                "test_metrics_used_for_selection",
+                "ood_metrics_used_for_selection",
+                "checks",
+            ),
+            json_root_type="mapping",
+        ),
+        _spec(
+            "nb08_deployment_policy",
+            "deployment_policy",
+            "08",
+            "artifacts/final_multihead/deployment_policy.json",
+            loader="json",
+            required_key_paths=(
+                "preferred_integrated_candidate",
+                "neural_scope",
+                "fallback_method",
+                "fallback_trigger",
+                "price_only_preference",
+                "exercise_only_preference",
+            ),
+            json_root_type="mapping",
+        ),
+        _spec(
+            "nb08_domain_bounds",
+            "deployment_policy",
+            "08",
+            "artifacts/final_multihead/domain_bounds.json",
+            loader="json",
+            required_key_paths=(
+                "moneyness",
+                "time_to_maturity",
+                "volatility",
+                "risk_free_rate",
+                "dividend_yield",
+            ),
+            json_root_type="mapping",
+        ),
+        _spec(
+            "nb08_scratch_manifest",
+            "training_manifest",
+            "08",
+            "artifacts/final_multihead/scratch_training_complete.json",
+            loader="json",
+            required_key_paths=(
+                "status",
+                "notebook",
+                "training_profile",
+                "dependencies",
+            ),
+            json_root_type="mapping",
+            expected_notebook="08_final_multihead_scratch",
+            allowed_profiles=("full",),
+            require_complete_status=True,
+        ),
+        _spec(
+            "nb08_warm_manifest",
+            "training_manifest",
+            "08",
+            "artifacts/final_multihead/warm_start_training_complete.json",
+            loader="json",
+            required_key_paths=(
+                "status",
+                "notebook",
+                "training_profile",
+                "dependencies",
+                "checkpoint",
+            ),
+            json_root_type="mapping",
+            expected_notebook="08_final_multihead_warm_start",
+            allowed_profiles=("full",),
+            require_complete_status=True,
+        ),
+    )
 
 
 def _has_key_path(payload: Any, key_path: str) -> bool:
@@ -57,302 +662,8 @@ def _has_key_path(payload: Any, key_path: str) -> bool:
     return True
 
 
-def default_artifact_registry() -> tuple[ArtifactSpec, ...]:
-    """Return the canonical final-evaluation artifact contract."""
-
-    return (
-        ArtifactSpec(
-            name="production_dataset_manifest",
-            category="data",
-            candidate_paths=(
-                "data/manifests/production_dataset_manifest.json",
-                "data/manifests/production_generation_manifest.json",
-            ),
-            loader="json",
-            description="Production design, component counts, split metadata, and hashes.",
-            json_root_type="mapping",
-        ),
-        ArtifactSpec(
-            name="direct_final_metrics",
-            category="notebook_04",
-            candidate_paths=("artifacts/direct_mlp/final_metrics.json",),
-            loader="json",
-            description="Canonical Notebook 04 pricing, consistency, OOD, and runtime package.",
-            required_key_paths=(
-                "schema_version",
-                "status",
-                "notebook",
-                "pricing.black_scholes_proxy",
-                "pricing.direct_mlp",
-                "financial_consistency",
-                "ood",
-                "runtime",
-            ),
-            json_root_type="mapping",
-        ),
-        ArtifactSpec(
-            name="direct_test_predictions",
-            category="notebook_04",
-            candidate_paths=(
-                "artifacts/direct_mlp/test_predictions.parquet",
-                "artifacts/direct_mlp/test_predictions.csv",
-            ),
-            loader="any",
-            description="Aligned Notebook 04 test predictions.",
-            required_columns=("sample_id",),
-            minimum_rows=1,
-        ),
-        ArtifactSpec(
-            name="premium_final_metrics",
-            category="notebook_05",
-            candidate_paths=("artifacts/premium_models/final_metrics.json",),
-            loader="json",
-            description="Canonical Notebook 05 model comparison and residual-learning package.",
-            required_key_paths=(
-                "schema_version",
-                "status",
-                "notebook",
-                "selected_candidate",
-                "pricing",
-                "premium_error",
-                "financial_consistency",
-                "ood",
-                "runtime",
-            ),
-            json_root_type="mapping",
-        ),
-        ArtifactSpec(
-            name="premium_test_predictions",
-            category="notebook_05",
-            candidate_paths=(
-                "artifacts/premium_models/test_predictions.parquet",
-                "artifacts/premium_models/test_predictions.csv",
-            ),
-            loader="any",
-            description="Aligned Notebook 05 test predictions.",
-            required_columns=("sample_id",),
-            minimum_rows=1,
-        ),
-        ArtifactSpec(
-            name="premium_checkpoint",
-            category="checkpoint",
-            candidate_paths=("artifacts/premium_models/best_premium_model.pt",),
-            loader="torch",
-            description="Canonical selected Notebook 05 checkpoint.",
-        ),
-        ArtifactSpec(
-            name="multitask_final_metrics",
-            category="notebook_06",
-            candidate_paths=("artifacts/multitask_model/final_metrics.json",),
-            loader="json",
-            description="Canonical Notebook 06 classifier, boundary, price, and OOD package.",
-            required_key_paths=(
-                "schema_version",
-                "status",
-                "notebook",
-                "classification",
-                "pricing",
-                "boundary_bands",
-                "boundary_pricing",
-                "boundary_location",
-                "ood",
-                "hypothesis",
-            ),
-            json_root_type="mapping",
-        ),
-        ArtifactSpec(
-            name="multitask_test_predictions",
-            category="notebook_06",
-            candidate_paths=(
-                "artifacts/multitask_model/test_predictions.parquet",
-                "artifacts/multitask_model/test_predictions.csv",
-            ),
-            loader="any",
-            description="Aligned Notebook 06 test predictions.",
-            required_columns=("sample_id",),
-            minimum_rows=1,
-        ),
-        ArtifactSpec(
-            name="multitask_checkpoint",
-            category="checkpoint",
-            candidate_paths=("artifacts/multitask_model/best_multitask_pricer.pt",),
-            loader="torch",
-            description="Canonical selected Notebook 06 checkpoint.",
-        ),
-        ArtifactSpec(
-            name="lsm_final_metrics",
-            category="notebook_07",
-            candidate_paths=("artifacts/neural_lsm/final_metrics.json",),
-            loader="json",
-            description="Canonical Notebook 07 held-out, policy, OOD, and runtime package.",
-            required_key_paths=(
-                "schema_version",
-                "status",
-                "notebook",
-                "heldout_pricing",
-                "coverage",
-                "policy_summary",
-                "ood_pricing",
-                "runtime",
-                "runtime_context",
-            ),
-            json_root_type="mapping",
-        ),
-        ArtifactSpec(
-            name="lsm_heldout_pricing",
-            category="notebook_07",
-            candidate_paths=(
-                "artifacts/neural_lsm/heldout_pricing_results.parquet",
-                "artifacts/neural_lsm/heldout_pricing_results.csv",
-            ),
-            loader="any",
-            description="Notebook 07 held-out contract-level pricing results.",
-            required_columns=(
-                "contract_id",
-                "crr_price",
-                "classical_lsm_price",
-                "neural_lsm_price",
-            ),
-            minimum_rows=1,
-        ),
-        ArtifactSpec(
-            name="lsm_policy_metrics",
-            category="notebook_07",
-            candidate_paths=(
-                "artifacts/neural_lsm/heldout_policy_metrics.parquet",
-                "artifacts/neural_lsm/heldout_policy_metrics.csv",
-            ),
-            required_for_final=False,
-            loader="any",
-            description="Notebook 07 contract-level stopping-policy comparison.",
-            required_columns=("contract_id",),
-            minimum_rows=1,
-        ),
-        ArtifactSpec(
-            name="lsm_policy_checkpoint",
-            category="checkpoint",
-            candidate_paths=("artifacts/neural_lsm/neural_lsm_policy.pt",),
-            loader="torch",
-            description="Saved neural Longstaff-Schwartz policy.",
-        ),
-        ArtifactSpec(
-            name="integrated_test_metrics",
-            category="notebook_08",
-            candidate_paths=("artifacts/final_multihead/test_metrics.json",),
-            loader="json",
-            description="Notebook 08 integrated test metrics.",
-            required_key_paths=(
-                "constrained_mae",
-                "constrained_rmse",
-                "direct_rmse",
-                "continuation_rmse",
-                "exercise_f1",
-                "exercise_balanced_accuracy",
-                "consistency_decision_disagreement_rate",
-            ),
-            json_root_type="mapping",
-        ),
-        ArtifactSpec(
-            name="integrated_pricing_metrics",
-            category="notebook_08",
-            candidate_paths=("artifacts/final_multihead/pricing_metrics.csv",),
-            loader="csv",
-            description="Notebook 08 constrained and direct pricing-head metrics.",
-            required_columns=("head", "mae", "rmse"),
-            minimum_rows=2,
-        ),
-        ArtifactSpec(
-            name="integrated_exercise_metrics",
-            category="notebook_08",
-            candidate_paths=("artifacts/final_multihead/exercise_metrics.json",),
-            loader="json",
-            description="Notebook 08 exercise-head classification metrics.",
-            required_key_paths=("balanced_accuracy", "precision", "recall", "f1"),
-            json_root_type="mapping",
-        ),
-        ArtifactSpec(
-            name="integrated_continuation_metrics",
-            category="notebook_08",
-            candidate_paths=("artifacts/final_multihead/continuation_metrics.json",),
-            loader="json",
-            description="Notebook 08 continuation-value regression metrics.",
-            required_key_paths=("mae", "rmse"),
-            json_root_type="mapping",
-        ),
-        ArtifactSpec(
-            name="integrated_consistency_metrics",
-            category="notebook_08",
-            candidate_paths=("artifacts/final_multihead/consistency_metrics.json",),
-            loader="json",
-            description="Notebook 08 internal financial-consistency metrics.",
-            required_key_paths=("decision_disagreement_rate",),
-            json_root_type="mapping",
-        ),
-        ArtifactSpec(
-            name="integrated_boundary_analysis",
-            category="notebook_08",
-            candidate_paths=("artifacts/final_multihead/boundary_analysis.csv",),
-            loader="csv",
-            description="Notebook 08 performance by exercise-boundary distance.",
-            required_columns=(
-                "boundary_band",
-                "observations",
-                "price_mae",
-                "exercise_accuracy",
-            ),
-            minimum_rows=1,
-        ),
-        ArtifactSpec(
-            name="integrated_ood_metrics",
-            category="notebook_08",
-            candidate_paths=(
-                "artifacts/final_multihead/ood_metrics.json",
-                "artifacts/final_multihead/ood_metrics.csv",
-            ),
-            loader="any",
-            description="Notebook 08 out-of-domain results.",
-            minimum_rows=1,
-            json_root_type="list",
-        ),
-        ArtifactSpec(
-            name="integrated_runtime",
-            category="notebook_08",
-            candidate_paths=("artifacts/final_multihead/runtime_summary.json",),
-            loader="json",
-            description="Notebook 08 marginal inference runtime.",
-            required_key_paths=(
-                "observations",
-                "seconds",
-                "seconds_per_observation",
-                "observations_per_second",
-                "device",
-            ),
-            json_root_type="mapping",
-        ),
-        ArtifactSpec(
-            name="integrated_test_predictions",
-            category="notebook_08",
-            candidate_paths=(
-                "artifacts/final_multihead/test_predictions.parquet",
-                "artifacts/final_multihead/test_predictions.csv",
-            ),
-            loader="any",
-            description="Aligned Notebook 08 test predictions for all heads.",
-            required_columns=("sample_id",),
-            minimum_rows=1,
-        ),
-        ArtifactSpec(
-            name="integrated_checkpoint",
-            category="checkpoint",
-            candidate_paths=("artifacts/final_multihead/best_integrated_multihead.pt",),
-            loader="torch",
-            description="Canonical selected Notebook 08 checkpoint.",
-        ),
-    )
-
-
 def resolve_artifact_path(project_root: Path, spec: ArtifactSpec) -> Path | None:
-    """Resolve the first existing candidate path for an artifact."""
+    """Resolve the first existing candidate path inside the project root."""
 
     root = Path(project_root).resolve()
     for candidate in spec.candidate_paths:
@@ -366,35 +677,74 @@ def resolve_artifact_path(project_root: Path, spec: ArtifactSpec) -> Path | None
     return None
 
 
-def _read_table_sample(path: Path) -> pd.DataFrame:
+def _table_schema(path: Path) -> tuple[tuple[str, ...], int]:
     suffix = path.suffix.lower()
     if suffix == ".csv":
-        return pd.read_csv(path, nrows=10)
+        frame = pd.read_csv(path, nrows=20)
+        # Count lines without materialising the entire CSV.  Header is removed.
+        with path.open("rb") as handle:
+            row_count = max(sum(1 for _ in handle) - 1, 0)
+        return tuple(str(column) for column in frame.columns), row_count
     if suffix == ".parquet":
-        return pd.read_parquet(path).head(10)
+        try:
+            import pyarrow.parquet as pq
+
+            parquet = pq.ParquetFile(path)
+            return tuple(parquet.schema.names), int(parquet.metadata.num_rows)
+        except ImportError:
+            frame = pd.read_parquet(path)
+            return tuple(str(column) for column in frame.columns), int(len(frame))
     raise ValueError(f"Unsupported table suffix: {suffix}")
 
 
-def _validate_json(payload: Any, spec: ArtifactSpec) -> tuple[bool, str]:
+def _validate_json(payload: Any, spec: ArtifactSpec) -> tuple[bool, str, int | None]:
     if spec.json_root_type == "mapping" and not isinstance(payload, dict):
-        return False, "JSON root must be a mapping"
+        return False, "JSON root must be a mapping", None
     if spec.json_root_type == "list" and not isinstance(payload, list):
-        return False, "JSON root must be a list"
-    missing = [key for key in spec.required_key_paths if not _has_key_path(payload, key)]
+        return False, "JSON root must be a list", None
+
+    missing = [
+        key_path
+        for key_path in spec.required_key_paths
+        if not _has_key_path(payload, key_path)
+    ]
     if missing:
-        return False, "missing JSON keys: " + ", ".join(missing)
-    if isinstance(payload, dict) and "status" in payload and payload["status"] != "complete":
-        return False, "JSON package status is not complete"
-    if isinstance(payload, list) and spec.minimum_rows and len(payload) < spec.minimum_rows:
-        return False, f"JSON list has fewer than {spec.minimum_rows} rows"
-    return True, "JSON schema validated"
+        return False, "missing JSON keys: " + ", ".join(missing), None
+
+    if spec.require_complete_status:
+        status = payload.get("status") if isinstance(payload, dict) else None
+        if status != "complete":
+            return False, f"package status is {status!r}, expected 'complete'", None
+
+    if spec.expected_notebook and isinstance(payload, dict):
+        notebook = payload.get("notebook")
+        if notebook != spec.expected_notebook:
+            return (
+                False,
+                f"notebook identity is {notebook!r}, expected {spec.expected_notebook!r}",
+                None,
+            )
+
+    if spec.allowed_profiles and isinstance(payload, dict):
+        profile = payload.get("training_profile")
+        if profile not in spec.allowed_profiles:
+            return (
+                False,
+                f"training profile is {profile!r}, expected one of {spec.allowed_profiles}",
+                None,
+            )
+
+    rows: int | None = len(payload) if isinstance(payload, list) else None
+    if spec.minimum_rows and rows is not None and rows < spec.minimum_rows:
+        return False, f"JSON list has {rows} rows; expected at least {spec.minimum_rows}", rows
+    return True, "JSON schema validated", rows
 
 
-def _basic_validate(path: Path, spec: ArtifactSpec) -> tuple[bool, str]:
+def _basic_validate(path: Path, spec: ArtifactSpec) -> tuple[bool, str, int | None]:
     if not path.is_file():
-        return False, "expected a file"
-    if path.stat().st_size == 0:
-        return False, "file is empty"
+        return False, "expected a file", None
+    if path.stat().st_size <= 0:
+        return False, "file is empty", None
 
     suffix = path.suffix.lower()
     try:
@@ -402,23 +752,26 @@ def _basic_validate(path: Path, spec: ArtifactSpec) -> tuple[bool, str]:
             payload = json.loads(path.read_text(encoding="utf-8"))
             return _validate_json(payload, spec)
 
-        if spec.required_columns or spec.minimum_rows:
-            frame = _read_table_sample(path)
-            missing_columns = sorted(set(spec.required_columns).difference(frame.columns))
-            if missing_columns:
-                return False, "missing table columns: " + ", ".join(missing_columns)
-            if spec.minimum_rows and frame.empty:
-                return False, "table contains no rows"
-            return True, "table schema validated"
-
         if suffix in {".csv", ".parquet"}:
-            _read_table_sample(path)
-            return True, "table is readable"
+            columns, rows = _table_schema(path)
+            missing_columns = sorted(set(spec.required_columns).difference(columns))
+            if missing_columns:
+                return (
+                    False,
+                    "missing table columns: " + ", ".join(missing_columns),
+                    rows,
+                )
+            if spec.minimum_rows and rows < spec.minimum_rows:
+                return (
+                    False,
+                    f"table has {rows} rows; expected at least {spec.minimum_rows}",
+                    rows,
+                )
+            return True, "table schema validated", rows
+    except Exception as exc:  # pragma: no cover - exact reader exceptions vary
+        return False, f"could not read artifact: {exc}", None
 
-    except Exception as exc:
-        return False, f"could not read artifact: {exc}"
-
-    return True, "artifact exists and is non-empty"
+    return True, "artifact exists and is non-empty", None
 
 
 def audit_artifacts(
@@ -435,27 +788,40 @@ def audit_artifacts(
             status = ArtifactStatus(
                 name=spec.name,
                 category=spec.category,
+                notebook=spec.notebook,
                 required_for_final=spec.required_for_final,
                 found=False,
                 valid=False,
                 resolved_path=None,
                 loader=spec.loader,
+                rows=None,
                 notes="missing — no candidate path exists",
             )
         else:
-            valid, notes = _basic_validate(path, spec)
+            valid, notes, row_count = _basic_validate(path, spec)
             status = ArtifactStatus(
                 name=spec.name,
                 category=spec.category,
+                notebook=spec.notebook,
                 required_for_final=spec.required_for_final,
                 found=True,
                 valid=valid,
                 resolved_path=str(path),
                 loader=spec.loader,
+                rows=row_count,
                 notes=notes,
             )
         rows.append(asdict(status))
     return pd.DataFrame(rows)
+
+
+def get_artifact_spec(name: str) -> ArtifactSpec:
+    """Return one registered specification by name."""
+
+    matches = [spec for spec in default_artifact_registry() if spec.name == name]
+    if len(matches) != 1:
+        raise KeyError(f"Artifact specification not found or not unique: {name!r}")
+    return matches[0]
 
 
 def load_artifact(path: Path) -> Any:
@@ -472,25 +838,43 @@ def load_artifact(path: Path) -> Any:
     raise ValueError(f"Unsupported artifact type: {path}")
 
 
-def load_registered_artifact(
-    project_root: Path,
-    artifact_name: str,
-    registry: Iterable[ArtifactSpec] | None = None,
-) -> Any | None:
-    """Resolve and load one logical artifact, returning None when unavailable."""
+def load_registered_artifact(project_root: Path, name: str) -> Any:
+    """Resolve, validate, and load one registered artifact."""
 
-    specs = {spec.name: spec for spec in (registry or default_artifact_registry())}
-    if artifact_name not in specs:
-        raise KeyError(f"Unknown artifact: {artifact_name}")
-    path = resolve_artifact_path(project_root, specs[artifact_name])
-    return None if path is None else load_artifact(path)
+    spec = get_artifact_spec(name)
+    path = resolve_artifact_path(project_root, spec)
+    if path is None:
+        raise FileNotFoundError(
+            f"No candidate path exists for registered artifact {name!r}: "
+            f"{spec.candidate_paths}"
+        )
+    valid, notes, _ = _basic_validate(path, spec)
+    if not valid:
+        raise ValueError(f"Artifact {name!r} is invalid: {notes}")
+    return load_artifact(path)
+
+
+def assert_required_artifacts_valid(audit: pd.DataFrame) -> None:
+    """Raise when any required artifact is missing or invalid."""
+
+    required = audit.loc[audit["required_for_final"]]
+    invalid = required.loc[~required["valid"]]
+    if invalid.empty:
+        return
+    details = "; ".join(
+        f"{row.name}: {row.notes}"
+        for row in invalid.itertuples(index=False)
+    )
+    raise RuntimeError(f"Required final artifacts are invalid: {details}")
 
 
 __all__ = [
     "ArtifactSpec",
     "ArtifactStatus",
+    "assert_required_artifacts_valid",
     "audit_artifacts",
     "default_artifact_registry",
+    "get_artifact_spec",
     "load_artifact",
     "load_registered_artifact",
     "resolve_artifact_path",

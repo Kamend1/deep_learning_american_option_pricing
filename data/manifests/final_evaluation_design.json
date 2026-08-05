@@ -1,61 +1,120 @@
 {
-  "artifact_version": "canonical_final_evaluation_v3",
-  "expected_total_observations": 1450000,
+  "artifact_version": "canonical_final_evaluation_v9_business_case",
   "notebook": "notebooks/09_final_evaluation.ipynb",
-  "markdown_twin": "docs/09_final_evaluation.md",
   "output_directory": "artifacts/final_evaluation",
-  "source_ownership": {
-    "Black\u2013Scholes proxy": "Notebook 04",
-    "Direct MLP": "Notebook 04",
-    "premium and residual models": "Notebook 05",
-    "exercise classifier and multi-task model": "Notebook 06",
-    "classical and neural LSM": "Notebook 07",
-    "final integrated heads": "Notebook 08"
-  },
-  "model_registry": [
-    "black_scholes_proxy",
-    "crr_benchmark",
-    "direct_mlp",
-    "unconstrained_premium_mlp",
-    "nonnegative_premium_mlp",
-    "constrained_floor_residual_mlp",
-    "exercise_only_classifier",
-    "step6_multitask_model",
-    "classical_longstaff_schwartz",
-    "neural_longstaff_schwartz",
-    "final_integrated_multihead_model"
+  "final_output_directory": "artifacts/final_evaluation/final",
+  "implemented_phases": [
+    "current artifact contract",
+    "explicit final-package adapters",
+    "lineage and static sample alignment",
+    "authoritative common static pricing comparison",
+    "exercise, OOD, runtime, and Longstaff-Schwartz evidence",
+    "predefined H1-H6 decisions",
+    "task-specific model recommendations",
+    "measured runtime scaling against project CRR and optional QuantLib engines",
+    "operational crossover and lifecycle break-even analysis",
+    "business workload scenarios and Research Question 7 answer",
+    "strict final export, manifest hashing, and end-to-end readiness validation"
   ],
+  "upstream_notebooks": {
+    "04": "direct pricing baseline",
+    "05": "validation-selected residual pricing model",
+    "06": "specialist exercise classifier and joint price-decision model",
+    "07": "classical and neural Longstaff-Schwartz experiments",
+    "08": "balanced scratch benchmark and warm-start integrated deployment model"
+  },
+  "final_conclusion_policy": {
+    "universal_model_winner": false,
+    "recommendation_basis": "task-specific and workload-dependent",
+    "small_or_one_off_valuation": "project CRR, finite difference, or QuantLib",
+    "repeated_static_price_only": "Notebook 05 constrained residual model inside the validated domain",
+    "repeated_price_and_exercise": "Notebook 08 warm-start integrated model inside the validated domain",
+    "integrated_robustness_benchmark": "Notebook 08 balanced scratch model",
+    "out_of_domain_or_changed_contract": "high-resolution numerical fallback",
+    "path_based_valuation": "Notebook 07 classical Longstaff-Schwartz"
+  },
   "hypothesis_rules": {
-    "H1": "direct_mlp_mae / black_scholes_mae <= 0.95",
-    "H2": "best_residual_mae / direct_mlp_mae <= 0.98",
-    "H3": "constrained_violation_rate == 0 and direct_violation_rate > 0",
-    "H4": "Use the validation-defined F1 and boundary-error thresholds exported by Notebook 06",
-    "H5": "neural_seconds_per_option / crr_seconds_per_option <= 0.50",
-    "H6": "aggregate_ood_mae / in_domain_mae >= 1.25"
+    "H1": "Direct MLP common-test MAE / Black-Scholes proxy MAE <= 0.95",
+    "H2": "Notebook 05 validation-selected residual MAE / Direct MLP MAE <= 0.98",
+    "H3": "Selected constrained model has zero lower-bound violations while Direct MLP has positive violations",
+    "H4": "Notebook 06 multi-task model must be classification-noninferior and improve boundary pricing under its predefined thresholds; Notebook 08 is supporting evidence",
+    "H5": "Selected static neural model seconds per option / high-resolution CRR seconds per option <= 0.50",
+    "H6": "Every eligible static neural pricing model has aggregate OOD/in-domain MAE ratio >= 1.25"
   },
-  "semantic_checks": [
-    "Direct MLP must resolve to Notebook 04",
-    "Direct and constrained financial-violation rates must be finite",
-    "OOD model-regime rows must be unique",
-    "OOD regime labels must use canonical names",
-    "Runtime benchmark keys must be unique",
-    "Multi-task and integrated exercise F1 values must be available"
+  "separation_rules": [
+    "Static pricing and exercise decisions are evaluated on the aligned 187811-row common test set",
+    "Longstaff-Schwartz methods remain on their separate contract-level held-out experiment",
+    "Static inference, numerical valuation, path-based valuation, simulation, and training are separate runtime families",
+    "H5 uses the selected static pricer against CRR; neural LSM runtime is secondary evidence",
+    "H6 is decided across all eligible static neural pricing models, not one preferred model",
+    "Cold-start and warm-service runtime are reported separately",
+    "Measured and extrapolated runtime rows are labelled explicitly",
+    "Operational crossover excludes sunk training cost; lifecycle break-even includes it",
+    "Missing historical build times produce explicit scenarios rather than invented point estimates",
+    "Notebook 05 and Notebook 08 are compared according to their different output scopes"
   ],
-  "required_outputs": [
-    "consolidated_model_metrics.csv",
-    "metric_inventory.csv",
-    "financial_consistency_table.csv",
-    "ood_results.csv",
-    "ood_model_summary.csv",
+  "final_required_tables": [
+    "task_recommendations.csv",
+    "integrated_model_tradeoff.csv",
+    "project_findings.csv",
+    "project_limitations.csv",
+    "hypothesis_decisions.csv",
+    "static_model_metrics.csv",
+    "static_financial_consistency.csv",
+    "exercise_model_metrics.csv",
+    "exercise_boundary_metrics.csv",
+    "static_ood_model_summary.csv",
+    "lsm_heldout_pricing.csv",
     "runtime_comparison.csv",
-    "boundary_comparison.csv",
-    "static_model_ablation.csv",
-    "lsm_comparison.csv",
-    "semantic_validation.csv",
-    "literature_synthesis.csv",
-    "hypothesis_decisions.json",
-    "artifact_audit.csv",
+    "runtime_scaling.csv",
+    "accuracy_speed_tradeoff.csv",
+    "runtime_curves.csv",
+    "operational_crossover.csv",
+    "upfront_cost_inventory.csv",
+    "upfront_cost_scenarios.csv",
+    "lifecycle_break_even.csv",
+    "business_case_scenarios.csv",
+    "business_case_recommendations.csv",
+    "business_case_readiness_audit.csv"
+  ],
+  "final_required_documents": [
+    "runtime_environment.json",
+    "research_question_7_summary.json",
+    "research_question_7.md",
     "final_results_summary.json",
-    "final_writeup_inputs.md"
-  ]
+    "hypothesis_decisions.json",
+    "final_project_conclusion.md",
+    "final_writeup_inputs.md",
+    "final_readiness_audit.csv",
+    "final_export_manifest.csv",
+    "final_export_manifest.json"
+  ],
+  "final_required_charts": [
+    "charts/static_pricing_mae.png",
+    "charts/exercise_f1.png",
+    "charts/ood_deterioration.png",
+    "charts/runtime_comparison.png",
+    "charts/lsm_heldout_mae.png",
+    "charts/business_runtime_scaling.png",
+    "charts/business_speedup_vs_crr.png",
+    "charts/business_lifecycle_break_even.png",
+    "charts/business_workload_scenarios.png"
+  ],
+  "external_validation_command": "python scripts/validate_final_evaluation.py",
+  "status": "complete_after_successful_notebook_run",
+  "research_question_7_policy": {
+    "question": "When does neural inference provide a meaningful practical speed advantage over numerical valuation?",
+    "evidence_levels": [
+      "marginal speed at scale",
+      "operational crossover for one valuation job",
+      "lifecycle break-even after label generation and training",
+      "business workload scenario payback"
+    ],
+    "primary_numerical_reference": "project 250-step Numba CRR",
+    "optional_external_references": [
+      "QuantLib binomial CRR",
+      "QuantLib finite-difference American put"
+    ],
+    "selection_constraint": "speed claims are conditional on accepted in-domain accuracy and numerical fallback outside the training domain"
+  }
 }
