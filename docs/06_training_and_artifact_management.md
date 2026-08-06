@@ -47,8 +47,7 @@ Exact cross-hardware bitwise equality is not guaranteed, but the configuration r
 Static regression models use AdamW:
 
 $$
-\theta_{t+1}
-=
+\theta_{t+1} =
 \operatorname{AdamW}
 \left(
 \theta_t,
@@ -108,8 +107,7 @@ File: `src/training/multitask_losses.py`
 The price-and-exercise objective combines residual regression with class-weighted binary cross entropy:
 
 $$
-\mathcal L
-=
+\mathcal L =
 \mathcal L_R
 +
 \lambda_E \mathcal L_E.

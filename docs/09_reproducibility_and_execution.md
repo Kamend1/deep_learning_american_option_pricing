@@ -108,7 +108,7 @@ Manifest:
 data/manifests/production_dataset_manifest.json
 ```
 
-The script is restartable and skips completed components unless `--overwrite` is used.
+The script is restartable, and skips completed components unless `--overwrite` is used.
 
 ## 3. Execute notebooks
 

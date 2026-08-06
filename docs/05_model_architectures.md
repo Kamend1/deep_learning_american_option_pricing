@@ -74,8 +74,7 @@ $$
 Reconstruction:
 
 $$
-\widehat V_A/K
-=
+\widehat V_A/K =
 V_E/K+\widehat R_E.
 $$
 
@@ -99,8 +98,7 @@ $$
 Reconstruction:
 
 $$
-\widehat V_A/K
-=
+\widehat V_A/K =
 F/K+\operatorname{Softplus}(\widehat R_F).
 $$
 
@@ -176,8 +174,7 @@ Outputs:
 Loss:
 
 $$
-\mathcal L
-=
+\mathcal L =
 \mathcal L_{\text{price}}
 +
 \lambda
@@ -270,8 +267,7 @@ This configuration allows compatible backbone weights from Notebook 06 to be cop
 The residual head is authoritative:
 
 $$
-\widehat V_A^{constrained}
-=
+\widehat V_A^{constrained} =
 \max(V_E,I)
 +
 K\operatorname{Softplus}(\widehat R_F).
@@ -290,8 +286,7 @@ $$
 The continuation-implied probability is:
 
 $$
-\widehat p_C
-=
+\widehat p_C =
 \sigma
 \left[
 \kappa

@@ -141,8 +141,7 @@ The project therefore treats millions of repeated valuations as the relevant ope
 At 4 million valuations per operating day over 250 days:
 
 $$
-4{,}000{,}000\times250
-=
+4{,}000{,}000\times250 =
 1{,}000{,}000{,}000
 $$
 

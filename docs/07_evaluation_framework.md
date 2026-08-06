@@ -47,8 +47,7 @@ Tail diagnostic that prevents a small average from hiding an extreme miss.
 ### Coefficient of determination
 
 $$
-R^2
-=
+R^2 =
 1-
 \frac{
 \sum_i(y_i-\widehat y_i)^2
@@ -231,8 +230,7 @@ The final evaluation reports each OOD regime separately and also computes aggreg
 For model $m$:
 
 $$
-R_m^{OOD}
-=
+R_m^{OOD} =
 \frac{
 MAE_m^{OOD}
 }{

@@ -93,12 +93,10 @@ Fitted warm-curve crossover:
 Assumption:
 
 $$
-4{,}000{,}000
-\text{ valuations/day}
+4{,}000{,}000 \text{ valuations/day}
 \times
 250
-\text{ days}
-=
+\text{ days} =
 1{,}000{,}000{,}000.
 $$
 

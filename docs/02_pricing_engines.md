@@ -23,9 +23,7 @@ Public functions:
 For a European put with continuous dividend yield,
 
 $$
-P_E =
-K e^{-rT}N(-d_2)
--
+P_E = K e^{-rT}N(-d_2) -
 S e^{-qT}N(-d_1),
 $$
 
@@ -136,8 +134,7 @@ The implementation validates $p$ and raises an error when the parameter combinat
 Terminal values are intrinsic payoffs. At each earlier node, continuation value is
 
 $$
-C_{i,j}
-=
+C_{i,j} =
 e^{-r\Delta t}
 \left[
 pV_{i+1,j+1}
@@ -214,8 +211,7 @@ $$
 The adjustment is recorded as:
 
 $$
-\text{pricing\_floor\_adjustment}
-=
+\text{pricing\_floor\_adjustment} =
 V_A-V_A^{raw}.
 $$
 
@@ -253,8 +249,7 @@ File: `src/pricing/simulation.py`
 Under geometric Brownian motion,
 
 $$
-S_{t+\Delta t}
-=
+S_{t+\Delta t} =
 S_t
 \exp
 \left[

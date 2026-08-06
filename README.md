@@ -166,13 +166,7 @@ The practical difference becomes visible in repeated million-valuation jobs and 
 
 Assume four million calculations per operating day:
 
-$$
-4{,}000{,}000
-\times
-250
-=
-1{,}000{,}000{,}000
-$$
+$$4{,}000{,}000 \times 250 = 1{,}000{,}000{,}000$$
 
 annual valuations.
 
@@ -238,18 +232,13 @@ The hypotheses support a narrow conclusion: **deep learning is useful as a struc
 Under Black–Scholes–Merton with continuous dividend yield, the European put value is
 
 $$
-P_E
-=
-K e^{-rT}N(-d_2)
--
-S e^{-qT}N(-d_1),
+P_E = K e^{-rT}N(-d_2) - S e^{-qT}N(-d_1),
 $$
 
 where
 
 $$
-d_1
-=
+d_1 =
 \frac{
 \ln(S/K)
 +
@@ -279,8 +268,7 @@ $$
 with continuation value
 
 $$
-C(S_t,t)
-=
+C(S_t,t) =
 \mathbb{E}^{\mathbb{Q}}
 \left[
 e^{-r\Delta t}
@@ -292,8 +280,7 @@ $$
 The American value is
 
 $$
-V_A(S_t,t)
-=
+V_A(S_t,t) =
 \max\left(I(S_t),C(S_t,t)\right).
 $$
 
@@ -302,8 +289,7 @@ $$
 Every static model receives one five-variable contract state:
 
 $$
-x
-=
+x =
 \left[
 \log(S/K),
 T,
@@ -405,8 +391,7 @@ The hidden backbone is held constant while the target formulation changes.
 The selected model predicts
 
 $$
-R_F
-=
+R_F =
 \frac{V_A-\max(V_E,I)}{K}
 $$
 
@@ -419,8 +404,7 @@ Purpose: test whether financial structure and residual learning matter more than
 The exercise specialist predicts
 
 $$
-Y_E
-=
+Y_E =
 \mathbb{1}[I\geq C].
 $$
 
