@@ -99,7 +99,7 @@ Reconstruction:
 
 $$
 \widehat V_A/K =
-F/K+\operatorname{Softplus}(\widehat R_F).
+F/K+\mathrm{Softplus}(\widehat R_F).
 $$
 
 This is the selected specialist pricing model.
@@ -270,7 +270,7 @@ $$
 \widehat V_A^{constrained} =
 \max(V_E,I)
 +
-K\operatorname{Softplus}(\widehat R_F).
+K\mathrm{Softplus}(\widehat R_F).
 $$
 
 The direct head is diagnostic. It reveals whether an unconstrained full-price output agrees with the protected reconstruction.

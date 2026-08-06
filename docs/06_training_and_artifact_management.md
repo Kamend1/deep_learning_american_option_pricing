@@ -48,7 +48,7 @@ Static regression models use AdamW:
 
 $$
 \theta_{t+1} =
-\operatorname{AdamW}
+\mathrm{AdamW}
 \left(
 \theta_t,
 \nabla_\theta \mathcal L

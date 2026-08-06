@@ -183,7 +183,7 @@ where $V_E$ is the European Black–Scholes value and $I=\max(K-S,0)$ is intrins
 The network predicts a non-negative residual $R_F$:
 
 $$
-\widehat{V}_A = F + \operatorname{Softplus}(\widehat{R}_F).
+\widehat{V}_A = F + \mathrm{Softplus}(\widehat{R}_F).
 $$
 
 This guarantees:
