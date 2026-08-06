@@ -56,7 +56,7 @@ $$
 \widehat V_A =
 F
 +
-K\operatorname{Softplus}(g_\theta(x)).
+K\,\mathrm{Softplus}(g_\theta(x))
 $$
 
 This constrained floor-residual MLP produces the lowest static pricing error and eliminates the lower-bound violations observed in the direct MLP.
