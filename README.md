@@ -1,15 +1,16 @@
 <div align="center">
 
-# Deep Learning for American Option Pricing
+# Deep Learning for American Put Option Pricing
 
-### Learning the Early-Exercise Premium and Exercise Boundary
+### When does a neural surrogate add value to a numerical pricing problem?
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-Deep%20Learning-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![Jupyter](https://img.shields.io/badge/Jupyter-Research%20Notebooks-F37626?logo=jupyter&logoColor=white)](https://jupyter.org/)
+[![Jupyter](https://img.shields.io/badge/Jupyter-9%20Research%20Notebooks-F37626?logo=jupyter&logoColor=white)](https://jupyter.org/)
 [![Tests](https://img.shields.io/badge/Tests-pytest-0A9EDC?logo=pytest&logoColor=white)](https://pytest.org/)
+[![Data](https://img.shields.io/badge/Data-DVC%20%2B%20Cloudflare%20R2-13ADC7)](#data-and-artifact-access)
 [![License](https://img.shields.io/badge/License-MIT-2EA44F.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Notebooks%2001--07%20Validated-2EA44F)](#project-status)
+[![Status](https://img.shields.io/badge/Status-Complete-2EA44F)](#project-status)
 
 **SoftUni Deep Learning Final Project**
 
@@ -19,57 +20,240 @@
 
 ## Project overview
 
-This project investigates the use of deep neural networks as surrogate pricing models for **American put options**.
+This project investigates whether deep learning has a justified role in **American put option pricing**.
 
-Unlike European options, American options may be exercised before maturity. Their valuation therefore includes an **optimal-stopping problem**: at every admissible exercise date, the holder must compare the immediate exercise payoff with the expected discounted continuation value.
+The objective is not to use a neural network merely because this is a deep-learning project. American options already have established numerical pricing methods. The relevant question is whether a trained neural surrogate can add enough value through:
 
-The project does not attempt to replace a closed-form solution with an unnecessarily complex neural network. Instead, it focuses on a problem for which no general closed-form solution exists and where repeated numerical valuation can become computationally expensive.
+- lower pricing error than a simple European proxy;
+- financially valid outputs;
+- accurate early-exercise decisions;
+- faster repeated valuation;
+- and transparent control of model risk.
 
-The core research question is:
+The central research question is:
 
-> Can a financially structured neural network learn American put prices, the early-exercise premium, and the exercise boundary with sufficient accuracy, financial consistency, and computational efficiency to function as a practical surrogate for traditional numerical methods?
+> **Can deep learning provide an accurate, financially coherent, and computationally efficient surrogate for American put pricing, and under what operating conditions does that surrogate make practical sense?**
 
-The repository is designed as an **academic computational-finance paper implemented through reproducible notebooks**. Markdown discussion, mathematical reasoning, citations, interpretation, and limitations are treated as first-class project components. Reusable implementation remains in `src/`, while notebooks present and evaluate the research.
+The project loosely reproduces and extends questions raised in the deep-learning option-pricing literature. It combines direct supervised pricing, residual learning, exercise classification, neural Longstaff–Schwartz, and an integrated multi-head model under one controlled dataset and one final evaluation framework.
 
----
-
-## Research objectives
-
-The project evaluates whether deep learning can:
-
-- approximate high-resolution American put prices;
-- learn the early-exercise premium over the corresponding European option;
-- identify the exercise-versus-continuation region;
-- respect essential financial lower bounds and monotonicity properties;
-- generalize across different moneyness, maturity, volatility, rate, and dividend regimes;
-- provide faster batched inference than repeated numerical pricing;
-- remain robust when tested outside the parameter domain used for training.
-
-The project explicitly distinguishes between:
-
-- **surrogate numerical pricing**, which is the scope of this work; and
-- **market-price forecasting**, which is not the scope of this work.
-
-The neural networks learn a pricing function generated under a clearly defined numerical model. They do not predict future underlying prices or claim to discover an objectively correct market price.
+The repository is structured as an **academic computational-finance study implemented through reproducible notebooks**. The notebooks present the argument and evidence, `src/` contains reusable implementation, `tests/` verifies numerical and software contracts, and `docs/` explains the technical system.
 
 ---
 
-## Financial foundation
+## Final answer
 
-### European put benchmark
+A financially structured neural network can serve as a highly accurate and computationally efficient surrogate for American put pricing **inside a validated parameter domain and at sufficiently high repeated volume**.
 
-Under the Black–Scholes–Merton framework with continuous dividend yield, the European put value is
+The strongest result does not come from the largest model. It comes from changing the learning problem. The selected Notebook 05 model predicts only the non-negative residual above the known financial floor
 
 $$
-P_E = K e^{-rT}N(-d_2) - S e^{-qT}N(-d_1),
+F = \max(V_E, I),
+$$
+
+and reconstructs the American value as
+
+$$
+\widehat V_A
+=
+F
++
+K\operatorname{Softplus}(g_\theta(x)).
+$$
+
+This constrained floor-residual MLP produces the lowest static pricing error and eliminates the lower-bound violations observed in the direct MLP.
+
+The project does **not** produce one model that is best at everything. It establishes a division of work:
+
+| Task | Preferred method | Reason |
+|---|---|---|
+| Most accurate static price | **Constrained floor-residual MLP** | Lowest aligned test MAE and zero financial-floor violations |
+| Exercise-only deployment | **Exercise-only classifier** | Narrow specialist model with effectively the same classification quality as the integrated head |
+| Highest measured exercise F1 | **Integrated warm-start exercise head** | Marginally highest F1, but only by 0.000209 |
+| One model for price and exercise | **Notebook 08 warm-start integrated model** | Returns a protected price and exercise recommendation together |
+| Path-based valuation | **Classical Longstaff–Schwartz** | More accurate, faster, and better calibrated than neural LSM in this experiment |
+| One-off, changing, or stress-regime pricing | **Numerical method** | No training cost, immediate adaptability, and no extrapolation dependence |
+
+The numerical method is therefore not replaced. It remains necessary to generate labels, validate the surrogate, price changed contracts and models, and provide a fallback outside the learned domain.
+
+---
+
+## Headline empirical results
+
+All static models are compared on the same **187,811-observation** test set, aligned by `sample_id` and verified to contain identical targets.
+
+### Static pricing
+
+| Method | Price MAE | Interpretation |
+|---|---:|---|
+| European Black–Scholes proxy | 1.339839 | Does not capture the American early-exercise value |
+| Direct MLP | 0.078167 | Major improvement from direct function approximation |
+| **Constrained floor-residual MLP** | **0.010187** | Best static pricing result |
+| Integrated warm-start constrained price | 0.029391 | Combined deployment compromise |
+
+The direct MLP reduces MAE relative to the European proxy by approximately **94.2%**. The constrained floor-residual model then reduces MAE by a further **87.0%** relative to the direct MLP.
+
+The integrated model remains strong, but its pricing error is approximately **2.89 times** that of the Notebook 05 specialist.
+
+### Financial consistency
+
+| Method | Combined financial-floor violation rate |
+|---|---:|
+| Direct MLP | 30.812892% |
+| Constrained floor-residual MLP | 0% |
+| Integrated constrained price | 0% |
+
+This is a key result. Average loss alone hides economically impossible outputs. The constrained reconstruction removes that defect by construction.
+
+### Exercise decision
+
+| Decision model | F1 |
+|---|---:|
+| Integrated warm-start exercise head | 0.996603 |
+| Exercise-only specialist | 0.996393 |
+| Notebook 06 multi-task exercise head | 0.995242 |
+| Integrated continuation-implied decision | 0.985347 |
+
+The integrated exercise head has the highest measured F1, but the difference from the specialist is only **0.000209**. The specialist remains the rational exercise-only deployment. The integrated head earns its role when price and exercise must be produced together.
+
+### Classical and neural Longstaff–Schwartz
+
+| Method | Held-out pricing MAE | 95% interval coverage |
+|---|---:|---:|
+| **Classical Longstaff–Schwartz** | **0.039594** | **68%** |
+| Neural Longstaff–Schwartz | 0.087197 | 42% |
+
+The neural continuation policy has approximately **2.2 times** the held-out pricing error, weaker interval coverage, and higher computational burden. Adding a neural network to a numerical method did not improve the method in this design.
+
+### Out-of-domain robustness
+
+All **7 of 7** eligible static neural models deteriorate materially outside their training range. The minimum aggregate OOD-to-in-domain error ratio is **8.127309**.
+
+The validated operating domain is intentionally broad:
+
+| Variable | In-domain range |
+|---|---:|
+| Moneyness $S/K$ | 0.50 to 1.50 |
+| Time to maturity | 7 days to 2 years |
+| Volatility | 5% to 80% |
+| Risk-free rate | 0% to 10% |
+| Continuous dividend yield | 0% to 8% |
+
+The OOD experiments extend into extreme moneyness, volatility up to 120%, maturities up to four years, and exceptional rate/dividend combinations. These are best interpreted as stress regimes requiring numerical fallback rather than normal deployment conditions.
+
+---
+
+## Does deep learning make business sense here?
+
+The answer is conditional.
+
+For an isolated option or a small portfolio, numerical pricing remains the sensible choice. It is already available, adapts immediately when assumptions change, and does not require synthetic data or training.
+
+The neural surrogate becomes useful when the **same in-domain pricing map is evaluated repeatedly at large scale**.
+
+### Measured runtime at one million valuations
+
+| Method | Runtime | Speedup vs project CRR |
+|---|---:|---:|
+| Project high-resolution Numba CRR | 17.877584 seconds | 1.00× |
+| Notebook 05 constrained residual | 2.399223 seconds | 7.45× |
+| Notebook 08 integrated | 2.909232 seconds | 6.15× |
+
+The conservative measured warm crossover is approximately **1,000 valuations** for both neural deployments. That is only the point where neural inference becomes faster; the absolute saving is still small.
+
+The practical difference becomes visible in repeated million-valuation jobs and material in repeated ten-million-valuation grids.
+
+### Example: one billion valuations annually
+
+Assume four million calculations per operating day:
+
+$$
+4{,}000{,}000
+\times
+250
+=
+1{,}000{,}000{,}000
+$$
+
+annual valuations.
+
+Relative to the already optimized project Numba CRR implementation:
+
+| Deployment | Approximate annual computation saved |
+|---|---:|
+| Notebook 05 price-only model | 4.3 hours |
+| Notebook 08 price-and-exercise model | 4.2 hours |
+
+More importantly, one four-million-valuation batch falls from roughly **71 seconds** to approximately **10–12 seconds**.
+
+The credible operating environments are therefore:
+
+- options market making;
+- algorithmic and high-frequency trading workflows;
+- large brokerage pricing systems;
+- institutional portfolio revaluation;
+- real-time risk limits;
+- large scenario and stress grids;
+- repeated sensitivity and Greeks calculations based on repricing.
+
+The benchmark measures **batch throughput**, not exchange-level microsecond latency. Its value in low-latency environments is the ability to refresh large pricing and risk surfaces several times faster, not a claim that the Python implementation itself is a complete high-frequency trading system.
+
+### Lifecycle break-even
+
+Training is not free. The surrogate must recover the cost of numerical label generation, model training, validation, and deployment.
+
+Against the optimized project Numba CRR, the estimated cumulative break-even ranges are:
+
+| Deployment | Lower-cost scenario | Higher-cost scenario |
+|---|---:|---:|
+| Notebook 05 price-only | 272,201,560 | 5,745,812,652 valuations |
+| Notebook 08 combined | 428,521,964 | 6,079,061,481 valuations |
+
+Against slower standard QuantLib engines, break-even is materially lower because each avoided numerical valuation is more expensive.
+
+> **Practical conclusion:** use numerical pricing for one-off, low-volume, changing, or extreme-regime work. Use a validated neural surrogate when large portfolios or scenario grids require the same in-domain pricing function to be evaluated repeatedly at a scale of millions or billions of valuations.
+
+---
+
+## Hypothesis decisions
+
+The six hypotheses were defined before the final consolidated evaluation.
+
+| Hypothesis | Decision | Primary evidence |
+|---|---|---|
+| **H1 — Direct pricing approximation** | **Supported** | Direct/proxy MAE ratio = 0.058341 |
+| **H2 — Premium decomposition** | **Supported** | Selected residual/direct MAE ratio = 0.130322 |
+| **H3 — Financial constraints** | **Supported** | Direct violation rate = 0.30812892; constrained rate = 0 |
+| **H4 — Multi-task learning** | **Not supported** | Multi-task F1 change = -0.001152; relative boundary-price MAE improvement = -51.6000% |
+| **H5 — Computational acceleration** | **Supported** | Formal marginal-runtime rule passes; dedicated scaling benchmark shows 7.45× and 6.15× speedups at one million valuations |
+| **H6 — OOD deterioration** | **Supported** | 7/7 eligible models deteriorate materially; minimum aggregate ratio = 8.127309 |
+
+The hypotheses support a narrow conclusion: **deep learning is useful as a structured, high-volume surrogate, not as a universal replacement for numerical pricing.**
+
+---
+
+## Financial and mathematical foundation
+
+### European benchmark
+
+Under Black–Scholes–Merton with continuous dividend yield, the European put value is
+
+$$
+P_E
+=
+K e^{-rT}N(-d_2)
+-
+S e^{-qT}N(-d_1),
 $$
 
 where
 
 $$
-d_1 =
+d_1
+=
 \frac{
-\ln(S/K) + \left(r-q+\frac{1}{2}\sigma^2\right)T
+\ln(S/K)
++
+\left(r-q+\frac{1}{2}\sigma^2\right)T
 }{
 \sigma\sqrt{T}
 },
@@ -77,16 +261,16 @@ d_1 =
 d_2=d_1-\sigma\sqrt{T}.
 $$
 
-The Black–Scholes price is used as:
+The European price is used as:
 
-1. an analytical European benchmark;
+1. an analytical benchmark;
 2. a convergence target for the European CRR tree;
-3. a lower bound for the corresponding American option;
-4. the known component of the early-exercise-premium model.
+3. a lower bound for the American option;
+4. a known component in residual learning.
 
 ### American optimal stopping
 
-At time $t$, the American put holder compares immediate exercise value
+At time $t$, the option holder compares immediate exercise
 
 $$
 I(S_t)=\max(K-S_t,0)
@@ -95,7 +279,8 @@ $$
 with continuation value
 
 $$
-C(S_t,t)=
+C(S_t,t)
+=
 \mathbb{E}^{\mathbb{Q}}
 \left[
 e^{-r\Delta t}
@@ -107,321 +292,221 @@ $$
 The American value is
 
 $$
-V_A(S_t,t)=\max\left(I(S_t),C(S_t,t)\right).
-$$
-
-### Early-exercise premium
-
-The American option can be decomposed as
-
-$$
-V_A = V_E + EEP,
-$$
-
-where
-
-$$
-EEP = V_A - V_E \geq 0.
-$$
-
-The main proposed neural model predicts only this residual component:
-
-$$
-\widehat{V}_A
+V_A(S_t,t)
 =
-V_{BS}
-+
-\operatorname{Softplus}(g_\theta(x)).
+\max\left(I(S_t),C(S_t,t)\right).
 $$
 
-This embeds the non-negative early-exercise-premium condition directly in the model architecture.
+### Static neural input
 
----
-
-## Research questions
-
-1. Can a conventional multilayer perceptron accurately approximate high-resolution American put prices?
-2. Does predicting the early-exercise premium improve performance relative to predicting the complete price?
-3. Do financially motivated output constraints reduce economically impossible predictions?
-4. Can a multi-task model jointly learn price and the exercise-versus-continuation decision?
-5. How do errors vary across moneyness, maturity, volatility, interest-rate, and dividend-yield regimes?
-6. How materially does performance deteriorate outside the training domain?
-7. Does neural inference provide a meaningful speed advantage over numerical valuation?
-
----
-
-## Predefined hypotheses
-
-The hypotheses are specified before neural-network training to reduce retrospective interpretation.
-
-- **H1 — Direct pricing approximation:** A direct MLP will outperform the European Black–Scholes value used as an American-option proxy.
-- **H2 — Premium decomposition:** A model trained on the early-exercise premium will outperform a model trained on the full American price.
-- **H3 — Financial constraints:** A constrained premium model will produce fewer lower-bound violations than an unconstrained direct-price model.
-- **H4 — Multi-task learning:** A joint price-and-exercise model will estimate the exercise boundary more accurately than a price-only model.
-- **H5 — Computational acceleration:** Batched neural inference will be substantially faster than repeated high-resolution CRR valuation.
-- **H6 — Out-of-domain deterioration:** All neural models will perform materially worse outside the training domain.
-
-### Current empirical findings
-
-The production dataset has been generated and the latest CPU load-mode executions of Notebooks 04–07 complete without errors.
-
-Current results are:
-
-- **H1 supported:** the direct MLP materially outperforms the European Black–Scholes proxy for in-domain American put pricing;
-- **H2 supported:** early-exercise-premium decomposition materially improves pricing accuracy;
-- **H3 supported:** the financial-floor residual model eliminates lower-bound violations and is the strongest static pricing model tested so far;
-- **H4 not supported:** the multi-task price-and-exercise model does not improve exercise classification and worsens pricing relative to the specialized models;
-- **Notebook 07 result:** classical contract-specific Longstaff–Schwartz outperforms the amortized neural continuation policy in the current in-domain and OOD experiments.
-
-The final H5 and H6 decisions remain reserved for Notebook 09, where all models and runtime results will be consolidated under one evaluation framework.
-
----
-
-## Methodology
-
-### 1. Numerical pricing foundation
-
-The project uses:
-
-- **Black–Scholes–Merton** for European analytical prices;
-- **Cox–Ross–Rubinstein binomial trees** for European and American option pricing;
-- **QuantLib** as an optional independent validation engine;
-- **Least-Squares Monte Carlo** as a later extension.
-
-The production tree resolution is selected through a documented convergence and runtime study rather than fixed arbitrarily.
-
-### 2. Synthetic dataset generation
-
-The configured production design contains exactly **1,450,000 observations**:
-
-| Dataset component | Observations |
-|---|---:|
-| Core domain | 1,000,000 |
-| Boundary-focused sample | 250,000 |
-| OOD high volatility | 50,000 |
-| OOD extreme moneyness | 50,000 |
-| OOD long maturity | 50,000 |
-| OOD rate/dividend combinations | 50,000 |
-| **Total** | **1,450,000** |
-
-The generation pipeline uses randomized Latin hypercube sampling and a Numba-accelerated CRR implementation.
-
-The core input vector is
+Every static model receives one five-variable contract state:
 
 $$
-x =
+x
+=
 \left[
-\log(S/K),\;
-T,\;
-r,\;
-q,\;
+\log(S/K),
+T,
+r,
+q,
 \sigma
 \right].
 $$
 
-The primary normalized target is
+This is not a sequence. For that reason, the project does not add an LSTM, GRU, or Transformer merely to increase architectural complexity. Recurrent architectures are appropriate when the input has a genuine temporal structure. Here, a feed-forward network is the correct control architecture for a static pricing surface.
 
-$$
-y=\frac{V_A}{K}.
-$$
+---
 
-Generated records include:
+## Experimental design
 
-- spot and strike;
-- moneyness and log-moneyness;
-- time to maturity;
-- risk-free rate;
-- dividend yield;
-- volatility;
-- intrinsic value;
-- continuation value;
+### Synthetic dataset
+
+A clean public dataset containing millions of American option contracts, complete numerical reference values, continuation values, exercise labels, and controlled stress regimes is not readily available in the required form.
+
+The project therefore generates a synthetic dataset from a validated **250-step CRR American put pricer**.
+
+| Component | Observations | Role |
+|---|---:|---|
+| Core domain | 1,000,000 | Main interpolation domain |
+| Boundary-focused sample | 250,000 | Improves representation near the exercise transition |
+| OOD high volatility | 50,000 | Volatility above the training maximum |
+| OOD extreme moneyness | 50,000 | Deep ITM and deep OTM contracts |
+| OOD long maturity | 50,000 | Maturities beyond two years |
+| OOD rate/dividend | 50,000 | Exceptional rate and dividend combinations |
+| **Total** | **1,450,000** | |
+
+The generation pipeline uses:
+
+- deterministic randomized Latin hypercube sampling;
+- a Numba-accelerated CRR batch pricer;
+- chunked Parquet output;
+- restartable component generation;
+- fixed global `sample_id` values;
+- raw and financially repaired prices;
+- SHA-256 component fingerprints;
+- a production manifest recording the full configuration.
+
+### Generated targets
+
+Each record includes:
+
+- American price;
 - European price;
-- raw and validated American prices;
+- intrinsic value;
+- root continuation value;
 - early-exercise premium;
-- normalized targets;
-- exercise decision;
+- exercise-now label;
+- normalized price and residual targets;
+- boundary distance;
 - CRR step count;
 - any pricing-floor adjustment.
 
-### 3. Chunked and restartable generation
+### Split and leakage controls
 
-The production dataset is not written as one monolithic file. It is generated in deterministic Parquet chunks.
-
-This design provides:
-
-- bounded memory usage;
-- restartability after interruption;
-- component-level validation;
-- transparent progress tracking;
-- scalable downstream loading.
-
-The generation script records a production manifest containing:
-
-- component sizes;
-- random seeds;
-- parameter ranges;
-- chunk sizes;
-- CRR step count;
-- output paths;
-- validation results;
-- generation timestamps.
-
-### 4. Dataset design and split policy
-
-The final dataset contains three experimental layers:
-
-- **Core domain** — standard training, validation, and in-domain test observations;
-- **Boundary-focused sample** — additional observations near the exercise/continuation transition;
-- **Out-of-domain sets** — parameter regimes excluded from training and reserved for robustness testing.
-
-The in-domain split is approximately:
+The core and boundary components are divided approximately into:
 
 - 70% training;
 - 15% validation;
 - 15% test.
 
-All feature preprocessing is fitted only on the training observations.
+The split is deterministic and stratified by the exercise label. OOD components are never eligible for training.
 
-### 5. Direct MLP baseline
+The project treats leakage control as a first-class requirement:
 
-The first neural model is a direct normalized-price regressor.
+- feature scalers are fitted only on training observations;
+- validation data select checkpoints, thresholds, and loss configurations;
+- the test set is not used for model selection;
+- OOD sets are reserved exclusively for robustness analysis;
+- Notebook 09 verifies identical `sample_id` membership and identical targets before comparing static models.
 
-Input features:
+---
 
-```python
-FEATURE_COLUMNS = [
-    "log_moneyness",
-    "time_to_maturity",
-    "risk_free_rate",
-    "dividend_yield",
-    "volatility",
-]
-```
+## Model families
 
-Target:
+### 1. Direct MLP — Notebook 04
 
-```python
-TARGET_COLUMN = "normalized_american_price"
-```
-
-The baseline architecture is:
+A conventional four-layer MLP predicts the complete normalized American price.
 
 ```text
 Input(5)
-→ Linear(128)
-→ BatchNorm
-→ SiLU
-→ Linear(128)
-→ BatchNorm
-→ SiLU
-→ Linear(64)
-→ SiLU
-→ Linear(32)
-→ SiLU
-→ Linear(1)
-→ Softplus
+→ 128 → BatchNorm → SiLU
+→ 128 → BatchNorm → SiLU
+→ 64  → SiLU
+→ 32  → SiLU
+→ 1   → Softplus
 ```
 
-The output activation enforces non-negative normalized prices. The direct MLP is the control model that later premium and constrained architectures must outperform.
+Purpose: establish whether basic deep-learning function approximation improves on the European proxy.
 
-### 6. Comparative model framework
+### 2. Premium and floor-residual MLPs — Notebook 05
 
-The project compares:
+The hidden backbone is held constant while the target formulation changes.
 
-1. European Black–Scholes proxy;
-2. direct MLP price model;
-3. early-exercise-premium MLP;
-4. financially constrained premium MLP;
-5. multi-task price and exercise model;
-6. classical Least-Squares Monte Carlo;
-7. neural Least-Squares Monte Carlo;
-8. final integrated static multi-head model.
+The selected model predicts
 
-### 7. Final integrated static model
+$$
+R_F
+=
+\frac{V_A-\max(V_E,I)}{K}
+$$
 
-The final static architecture uses one shared option-state representation and four specialized heads:
+with a non-negative output.
+
+Purpose: test whether financial structure and residual learning matter more than additional network complexity.
+
+### 3. Exercise-only and multi-task models — Notebook 06
+
+The exercise specialist predicts
+
+$$
+Y_E
+=
+\mathbb{1}[I\geq C].
+$$
+
+A second model shares one backbone between a constrained pricing head and an exercise head.
+
+Purpose: test whether joint representation learning improves the exercise boundary without sacrificing pricing.
+
+### 4. Classical and neural Longstaff–Schwartz — Notebook 07
+
+The classical experiment estimates continuation values from simulated paths using regression basis functions. The neural version replaces the continuation regression with time-indexed MLPs.
+
+Purpose: test whether deep learning improves the numerical optimal-stopping algorithm itself, rather than only approximating a static pricing surface.
+
+### 5. Integrated four-head model — Notebook 08
 
 ```text
 Input(5)
 → Shared backbone
    ├── Financial-floor residual head
-   ├── Direct American-price head
+   ├── Direct-price head
    ├── Continuation-value head
    └── Exercise-classification head
 ```
 
-The authoritative price is reconstructed as
+The authoritative price is the constrained residual reconstruction. The direct-price and continuation outputs are supporting heads, while the exercise head produces the deployment decision.
 
-$$
-\widehat V_A
-=
-\max(V_E,I)
-+
-\operatorname{Softplus}(\widehat R_F).
-$$
-
-The continuation and exercise heads provide two independent paths to the stopping decision. Their disagreement is measured and penalized during training. The integrated static model remains separate from neural LSM because neural LSM consumes simulated paths and time-indexed states rather than one static contract vector.
+Purpose: test whether one larger model can combine several related outputs without losing too much specialist performance.
 
 ---
 
-## Evaluation framework
+## Model architecture summary
 
-Aggregate loss alone is not sufficient for this project.
+Notebook 01 instantiates every neural architecture on CPU with one five-feature observation and reports the executed `torchinfo` summaries. The table below condenses those outputs.
 
-### Pricing metrics
+| Model | Architecture | Outputs | Trainable parameters |
+|---|---|---|---:|
+| **Direct American put MLP** | $5 \rightarrow 128 \rightarrow 128 \rightarrow 64 \rightarrow 32 \rightarrow 1$, with batch normalization after the first two hidden layers and `SiLU` activations | Non-negative normalized American price | **28,161** |
+| **Unconstrained premium MLP** | Same four-layer backbone as the direct MLP; linear final output | Normalized early-exercise premium | **28,161** |
+| **Constrained floor-residual MLP** | Same four-layer backbone; `Softplus` residual output | Non-negative residual above $\max(V_E,I)$ | **28,161** |
+| **Exercise-only classifier** | Same four-layer backbone; linear logit output | Exercise-versus-continuation logit | **28,161** |
+| **Notebook 06 multi-task MLP** | Shared $5 \rightarrow 128 \rightarrow 128 \rightarrow 64$ backbone with separate $64 \rightarrow 32 \rightarrow 1$ pricing and classification heads | Floor residual and exercise logit | **30,274** |
+| **Neural LSM continuation network** | $5 \rightarrow 64 \rightarrow 64 \rightarrow 32 \rightarrow 1$ with `SiLU` and `Softplus` output | Non-negative continuation value at one exercise date | **6,657** per time-indexed network |
+| **Notebook 08 integrated multi-head MLP** | Shared $5 \rightarrow 192 \rightarrow 192 \rightarrow 96$ backbone with four $96 \rightarrow 48 \rightarrow 1$ heads | Floor residual, direct price, continuation value, and exercise logit | **76,324** |
 
-- mean absolute error;
-- root mean squared error;
-- normalized MAE;
-- median absolute error;
-- maximum absolute error;
-- coefficient of determination;
-- percentage of observations within predefined error bands.
+The architecture comparison supports the project’s main modelling conclusion. Notebook 05 holds model capacity constant and changes only the target construction and output constraint, so its improvement is attributable to financial structure rather than a larger network. The integrated model has the greatest capacity, but it does not produce the best specialist price. Recurrent architectures are not used because the static pricing input $[\log(S/K),T,r,q,\sigma]$ is not a sequence.
 
-MAPE is not used as the primary measure because percentage errors become unstable when the true option value is close to zero.
+---
 
-### Financial-consistency tests
+## Notebook workflow
 
-Predicted American put values should satisfy:
+The nine notebooks form one sequential research argument.
 
-$$
-\widehat{V}_A \geq 0,
-$$
+| Notebook | Role | Final conclusion |
+|---|---|---|
+| **01 — Option pricing foundations** | Defines American optimal stopping, literature context, research questions, and hypotheses | Deep learning must be justified by the American problem and repeated computation |
+| **02 — American option data generation** | Validates pricing engines, studies CRR convergence, and designs synthetic generation | A 250-step CRR engine provides a controlled production reference |
+| **03 — Dataset analysis and validation** | Audits the 1.45 million rows, freezes splits, and defines OOD regimes | The dataset is suitable for controlled interpolation and stress testing |
+| **04 — Direct MLP pricer** | Trains the direct neural baseline | H1 supported |
+| **05 — Early-exercise premium models** | Compares direct, premium, and financially constrained targets | H2 and H3 supported; constrained residual is best static price |
+| **06 — Exercise-boundary analysis** | Trains specialist and multi-task exercise models | Joint learning is feasible but H4 is not supported |
+| **07 — Neural Longstaff–Schwartz** | Compares classical and neural continuation regression | Classical LSM is preferred |
+| **08 — Final integrated multi-head model** | Combines price, continuation, and exercise outputs | Useful combined deployment, but not the overall winner |
+| **09 — Final evaluation** | Aligns all evidence, decides H1–H6, audits artifacts, and evaluates the business case | Deep learning is justified conditionally for repeated high-volume in-domain pricing |
 
-$$
-\widehat{V}_A \geq \max(K-S,0),
-$$
+Notebook 09 is the authoritative project conclusion.
 
-$$
-\widehat{V}_A \geq V_E.
-$$
+---
 
-The project also tests expected directional properties:
+## Technical documentation
 
-- put value decreases as spot increases;
-- put value increases as strike increases;
-- put value generally increases as volatility increases;
-- American value does not fall below the equivalent European value.
+The `docs/` directory is an engineering reference, not a second copy of the notebooks.
 
-### Exercise-boundary evaluation
+Start with [docs/README.md](docs/README.md).
 
-The exercise component is assessed through:
-
-- precision;
-- recall;
-- F1-score;
-- confusion matrix;
-- boundary-location error;
-- performance near the exercise/continuation transition.
-
-### Computational benchmarking
-
-The project compares:
-
-- numerical-pricing runtime;
-- neural inference runtime;
-- batched portfolio valuation speed;
-- training and data-generation cost as separate up-front investments.
+| Document | Scope |
+|---|---|
+| [System architecture](docs/01_system_architecture.md) | End-to-end data, training, artifact, and evaluation flow |
+| [Pricing engines](docs/02_pricing_engines.md) | Black–Scholes, CRR, QuantLib, simulation, and LSM |
+| [Synthetic data pipeline](docs/03_synthetic_data_pipeline.md) | Sampling, Numba pricing, components, chunking, and manifests |
+| [Dataset schema and splits](docs/04_dataset_schema_and_splits.md) | Formal column contract, normalization, and leakage controls |
+| [Model architectures](docs/05_model_architectures.md) | All static and path-based neural architectures |
+| [Training and artifact management](docs/06_training_and_artifact_management.md) | Training loops, checkpoints, completion manifests, and fingerprints |
+| [Evaluation framework](docs/07_evaluation_framework.md) | Metrics, financial checks, OOD tests, and aligned comparisons |
+| [Runtime and business case](docs/08_runtime_and_business_case.md) | Scaling, crossover, annual workloads, and lifecycle break-even |
+| [Reproducibility and execution](docs/09_reproducibility_and_execution.md) | Environment, commands, profiles, and troubleshooting |
+| [Results reference](docs/10_results_reference.md) | Frozen headline results and artifact sources |
 
 ---
 
@@ -429,241 +514,50 @@ The project compares:
 
 ```text
 deep_learning_american_option_pricing/
-├── notebooks/
-│   ├── 01_option_pricing_foundations.ipynb
-│   ├── 02_american_option_data_generation.ipynb
-│   ├── 03_dataset_analysis_and_validation.ipynb
-│   ├── 04_direct_mlp_pricer.ipynb
-│   ├── 05_early_exercise_premium_model.ipynb
-│   ├── 06_exercise_boundary_analysis.ipynb
-│   ├── 07_neural_longstaff_schwartz.ipynb
-│   ├── 08_final_multihead_model.ipynb
-│   └── 09_final_evaluation.ipynb
-│
-├── docs/
-│   ├── 01_option_pricing_foundations.md
-│   ├── 02_american_option_data_generation.md
-│   ├── 03_dataset_analysis_and_validation.md
-│   ├── 04_direct_mlp_pricer.md
-│   ├── 05_early_exercise_premium_model.md
-│   ├── 06_exercise_boundary_analysis.md
-│   ├── 07_neural_longstaff_schwartz.md
-│   ├── 08_final_multihead_model.md
-│   ├── 09_final_evaluation.md
-│   ├── RESULTS_REQUIRED.md
-│   └── FINAL_WRITEUP_CHECKLIST.md
-│
-├── scripts/
-│   ├── generate_production_dataset.py
-│   ├── train_final_multihead.py
-│   ├── validate_production_project.py
-│   └── build_final_results.py
-│
+├── notebooks/                  # Nine executable research notebooks
+├── docs/                       # Technical engineering documentation
 ├── src/
-│   ├── pricing/
-│   │   ├── black_scholes.py
-│   │   ├── binomial_tree.py
-│   │   ├── validation.py
-│   │   ├── simulation.py
-│   │   └── longstaff_schwartz.py
-│   │
-│   ├── data/
-│   │   ├── generation.py
-│   │   ├── production_generation.py
-│   │   ├── dataset_validation.py
-│   │   ├── splitting.py
-│   │   ├── multihead_targets.py
-│   │   └── torch_datasets.py
-│   │
-│   ├── models/
-│   │   ├── direct_pricer.py
-│   │   ├── premium_pricer.py
-│   │   ├── multitask_pricer.py
-│   │   ├── neural_longstaff_schwartz.py
-│   │   └── integrated_multihead_pricer.py
-│   │
-│   ├── training/
-│   │   ├── loops.py
-│   │   ├── checkpointing.py
-│   │   ├── artifact_management.py
-│   │   ├── dependency_fingerprints.py
-│   │   ├── losses.py
-│   │   ├── multitask_losses.py
-│   │   ├── multitask_loops.py
-│   │   ├── lsm_training.py
-│   │   ├── multihead_losses.py
-│   │   └── multihead_loops.py
-│   │
-│   ├── evaluation/
-│   │   ├── regression_metrics.py
-│   │   ├── financial_checks.py
-│   │   ├── model_comparison.py
-│   │   ├── classification_metrics.py
-│   │   ├── exercise_boundary.py
-│   │   ├── exercise_boundary_support.py
-│   │   ├── inference_benchmark.py
-│   │   ├── lsm_comparison.py
-│   │   ├── lsm_experiment_support.py
-│   │   ├── internal_consistency.py
-│   │   ├── integrated_model_comparison.py
-│   │   ├── artifact_registry.py
-│   │   ├── final_project_evaluation.py
-│   │   ├── hypothesis_testing.py
-│   │   └── final_reporting.py
-│   │
-│   └── json_export.py
-│
-├── tests/
-│   ├── integration/
-│   │   ├── test_static_multihead_pipeline.py
-│   │   └── test_full_project_pipeline.py
-│   ├── test_black_scholes.py
-│   ├── test_binomial_tree.py
-│   ├── test_data_generation.py
-│   ├── test_data_splitting.py
-│   ├── test_torch_datasets.py
-│   ├── test_direct_pricer.py
-│   ├── test_training_pipeline.py
-│   ├── test_premium_pricer.py
-│   ├── test_multitask_pricer.py
-│   ├── test_gbm_simulation.py
-│   ├── test_longstaff_schwartz.py
-│   ├── test_neural_longstaff_schwartz.py
-│   ├── test_lsm_comparison.py
-│   ├── test_integrated_multihead_pricer.py
-│   ├── test_multihead_losses.py
-│   ├── test_internal_consistency.py
-│   ├── test_integrated_model_comparison.py
-│   └── test_final_project_evaluation.py
-│
+│   ├── pricing/                # Black–Scholes, CRR, simulation, LSM
+│   ├── data/                   # Generation, validation, splits, datasets
+│   ├── models/                 # Direct, residual, multi-task, LSM, multi-head
+│   ├── training/               # Losses, loops, checkpoints, lineage metadata
+│   └── evaluation/             # Metrics, audits, comparisons, business case
+├── scripts/                    # Production generation and validation entry points
+├── tests/                      # Unit and integration tests
 ├── data/
-│   ├── generated/          # ignored by Git
-│   ├── manifests/          # tracked metadata and split definitions
-│   └── sample/             # optional small reproducible examples
-│
-├── artifacts/              # ignored model checkpoints and training outputs
-├── references/
-│   ├── references.bib
-│   ├── literature_matrix.md
-│   └── citation_audit.md
-│
-├── pytest.ini
+│   ├── generated/              # DVC-managed production Parquet files
+│   └── manifests/              # Tracked design and generation metadata
+├── artifacts/                  # DVC-managed checkpoints and final outputs
+├── references/                 # Papers, bibliography, and citation audit
 ├── requirements.txt
-├── .gitignore
+├── pytest.ini
 ├── LICENSE
 └── README.md
 ```
 
-The production dataset and the trained artifacts used by Notebooks 04–07 are available through DVC. Notebook 08 and Notebook 09 remain the final integration and synthesis stages.
-
 ---
 
-## Notebook workflow
-
-The notebooks form one sequential academic workflow.
-
-### Notebook 01 — Theoretical foundations and numerical motivation
-
-- connects the project to earlier Black–Scholes work;
-- introduces optimal stopping;
-- visualizes intrinsic, European, and American values;
-- defines the early-exercise premium;
-- establishes the literature context;
-- states the research questions and hypotheses.
-
-### Notebook 02 — American option data generation
-
-- validates pricing engines;
-- studies CRR convergence;
-- benchmarks runtime versus accuracy;
-- selects production tree resolution;
-- generates and validates the pilot dataset;
-- records pricing-floor adjustments transparently.
-
-### Notebook 03 — Dataset analysis and validation
-
-- audits schema and data quality;
-- analyzes parameter and target distributions;
-- measures exercise-region representation;
-- evaluates the Black–Scholes proxy baseline;
-- freezes deterministic train, validation, and test splits;
-- defines out-of-domain regimes.
-
-### Notebook 04 — Direct MLP pricer
-
-- loads the frozen production split;
-- verifies features, targets, and dataloaders;
-- trains and reloads the direct MLP benchmark;
-- saves the best checkpoint and feature scaler;
-- reports in-domain, segmented, financial-consistency, OOD, and inference results;
-- establishes that direct neural pricing materially improves on the European proxy;
-- supports H1.
-
-### Notebook 05 — Early-exercise-premium models
-
-- compares direct-price and residual target formulations;
-- trains unconstrained, non-negative-premium, and financial-floor residual models;
-- selects the floor candidate using a common unweighted validation metric;
-- verifies checkpoint, scaler, and production-manifest compatibility;
-- shows that the constrained floor-residual model is the strongest static pricing model tested;
-- supports H2 and H3.
-
-### Notebook 06 — Exercise-boundary multi-task model
-
-- validates exercise labels and class balance;
-- trains an exercise-only classifier;
-- trains a shared price-and-exercise network;
-- evaluates signed boundary margins, decision regret, one-factor boundary sweeps, OOD behavior, and inference speed;
-- shows that the specialized classifier and pricing model outperform the shared multi-task model;
-- does not support H4.
-
-### Notebook 07 — Classical and neural Longstaff–Schwartz
-
-- validates risk-neutral GBM simulation;
-- selects the classical basis on validation contracts;
-- studies repeated-seed path-count and exercise-date convergence;
-- trains and reloads amortized neural continuation networks;
-- evaluates policies on independent held-out paths and contracts;
-- reports antithetic-aware uncertainty, stopping-policy, segmented, OOD, robustness, and runtime results;
-- finds that classical contract-specific LSM outperforms the current amortized neural policy.
-
-### Notebook 08 — Final integrated static multi-head model
-
-- trains one shared backbone with residual, direct-price, continuation, and exercise heads;
-- compares balanced, pricing-focused, and decision-focused loss configurations;
-- evaluates scratch and optional Step 6 warm-start training;
-- quantifies internal price and exercise consistency;
-- reconstructs the exercise boundary;
-- saves the authoritative constrained-price checkpoint.
-
-### Notebook 09 — Final evaluation and project synthesis
-
-- audits all required production artifacts;
-- aligns static and simulation-based model results;
-- consolidates pricing, boundary, consistency, OOD, and runtime tables;
-- applies predefined H1–H6 decision rules;
-- provides placeholders for literature synthesis and final conclusions;
-- exports the final write-up inputs and project-level result manifests;
-- runs safely in placeholder mode before the expensive production experiments.
-
----
-
-## Installation
+## Quick start for reviewers and graders
 
 > [!IMPORTANT]
-> **Cloning the GitHub repository does not download the production dataset or trained model artifacts.**
->
-> The large Parquet datasets, model checkpoints, scalers, training histories, model-selection tables, and evaluation outputs are versioned with **DVC** and stored in a publicly readable Cloudflare R2 remote.
->
-> After installing the project dependencies, every reviewer must run:
->
-> ```bash
-> dvc pull
-> ```
->
-> No Cloudflare account, API token, access key, or secret key is required for downloading the published project assets.
+> A normal Git clone contains the code and lightweight DVC pointers, but not the large production dataset or trained artifacts. Run `dvc pull` before opening the load-mode model notebooks.
 
-### Quick setup for reviewers and graders
+### Windows PowerShell
+
+```powershell
+git clone https://github.com/Kamend1/deep_learning_american_option_pricing.git
+cd deep_learning_american_option_pricing
+
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+dvc pull
+```
+
+### macOS or Linux
 
 ```bash
 git clone https://github.com/Kamend1/deep_learning_american_option_pricing.git
@@ -678,13 +572,11 @@ python -m pip install -r requirements.txt
 dvc pull
 ```
 
-For Windows PowerShell, activate the environment with:
+The default DVC remote is publicly readable. Downloading the published dataset and model artifacts does not require Cloudflare credentials.
 
-```powershell
-.venv\Scripts\Activate.ps1
-```
+Saved checkpoints and the final evaluation can be reviewed on CPU. CUDA is useful for full retraining; install the appropriate CUDA-enabled PyTorch build for the local machine before installing the remaining dependencies.
 
-After `dvc pull`, DVC reconstructs the versioned project assets in their expected locations, including:
+After `dvc pull`, the principal restored paths are:
 
 ```text
 data/generated/
@@ -693,223 +585,30 @@ artifacts/premium_models/
 artifacts/multitask_model/
 artifacts/neural_lsm/
 artifacts/final_multihead/
+artifacts/final_evaluation/
 ```
 
-Confirm that the assets were downloaded successfully:
+Verify the local state:
 
 ```bash
 dvc status
-find data artifacts -maxdepth 2 -type f | head -50
 ```
 
-For a load-only academic review, the submitted versions of Notebooks 04–08 should use:
+---
+
+## Reproducing the project
+
+### Load and review the submitted models
+
+The submitted model notebooks are designed to reuse complete saved training packages.
 
 ```python
 FORCE_TRAIN = False
 ```
 
-With this setting, each notebook checks whether its complete training outputs are available, loads the saved checkpoint and supporting histories, and continues directly to evaluation and analysis. Full training is required only when the expected artifacts are missing or when `FORCE_TRAIN = True` is set explicitly.
+Each notebook validates its required checkpoint, scaler, manifest, training profile, and dependency fingerprints before loading the package.
 
-### Manual installation steps
-
-#### 1. Clone the repository
-
-```bash
-git clone https://github.com/Kamend1/deep_learning_american_option_pricing.git
-cd deep_learning_american_option_pricing
-```
-
-#### 2. Create a virtual environment
-
-##### Windows PowerShell
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-##### macOS or Linux
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-
-#### 3. Install dependencies
-
-```bash
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-If the `dvc` command is not available after dependency installation:
-
-```bash
-python -m pip install "dvc[s3]"
-```
-
-#### 4. Download the published dataset and trained models
-
-Run this command from the repository root:
-
-```bash
-dvc pull
-```
-
-The default DVC remote is publicly readable. Downloading does not require credentials. Write credentials are used only by the project author when publishing new DVC objects.
-
-Optional independent validation:
-
-```bash
-python -m pip install QuantLib
-```
-
-### PyTorch and CUDA
-
-CPU execution is fully supported for loading saved models and running most evaluation workflows.
-
-For GPU training, install the appropriate CUDA-enabled PyTorch build for the local environment before installing the remaining project dependencies.
-
-Numba accelerates CRR label generation, while PyArrow provides chunked Parquet storage.
-
----
-
-## Running the tests
-
-Run the complete test suite from the repository root:
-
-```bash
-python -m pytest -q
-```
-
-Run only the pricing tests:
-
-```bash
-python -m pytest -q \
-    tests/test_black_scholes.py \
-    tests/test_binomial_tree.py
-```
-
-Run only the dataset tests:
-
-```bash
-python -m pytest -q \
-    tests/test_data_generation.py \
-    tests/test_data_splitting.py
-```
-
-Run the direct-model pipeline tests:
-
-```bash
-python -m pytest -q \
-    tests/test_torch_datasets.py \
-    tests/test_direct_pricer.py \
-    tests/test_training_pipeline.py
-```
-
-Run the simulation and Longstaff–Schwartz tests:
-
-```bash
-python -m pytest -q \
-    tests/test_gbm_simulation.py \
-    tests/test_longstaff_schwartz.py \
-    tests/test_neural_longstaff_schwartz.py \
-    tests/test_lsm_comparison.py
-```
-
-Run the final integrated-model tests:
-
-```bash
-python -m pytest -q \
-    tests/test_integrated_multihead_pricer.py \
-    tests/test_multihead_losses.py \
-    tests/test_internal_consistency.py \
-    tests/test_integrated_model_comparison.py
-```
-
-Run the miniature end-to-end integration pipeline:
-
-```bash
-python -m pytest -q -m integration
-```
-
-Run tests explicitly marked as slow:
-
-```bash
-python -m pytest -q -m slow
-```
-
-The default `pytest` configuration excludes `integration` and `slow` tests so routine validation remains fast. Full production generation and full model training are not ordinary unit-test workloads.
-
-The pricing tests should pass before generating large datasets. A neural network trained on an incorrect pricing engine will learn the implementation error rather than correct it.
-
----
-
-## Production dataset generation
-
-Generate the full 1.45 million observation design from the repository root:
-
-```bash
-python scripts/generate_production_dataset.py
-```
-
-The script:
-
-- generates each component separately;
-- writes deterministic Parquet chunks;
-- skips completed chunks when restarted;
-- validates component outputs;
-- records the production manifest;
-- avoids loading the entire dataset into memory.
-
-The generated files are intentionally excluded from Git.
-
-Train one final multi-head configuration non-interactively:
-
-```bash
-python scripts/train_final_multihead.py --config balanced
-```
-
-Available presets are `balanced`, `pricing_focused`, and `decision_focused`. A Step 6-compatible warm-start run can be launched with:
-
-```bash
-python scripts/train_final_multihead.py \
-    --config decision_focused \
-    --architecture step6_compatible \
-    --warm-start-checkpoint artifacts/multitask_model/best_multitask_pricer.pt
-```
-
----
-
-
-## Final production validation and report build
-
-Before the final academic write-up, validate the complete artifact chain:
-
-```bash
-python scripts/validate_production_project.py --deep
-```
-
-Build the consolidated Notebook 09 input tables:
-
-```bash
-python scripts/build_final_results.py --strict
-```
-
-During the architecture-only phase, both scripts support a safe pending state:
-
-```bash
-python scripts/validate_production_project.py --allow-missing
-python scripts/build_final_results.py
-```
-
-Notebook 09 never fabricates unavailable results. Missing evidence is marked as `PENDING` or produces an `Inconclusive` hypothesis decision.
-
----
-
-## Execution order
-
-Run the notebooks sequentially:
+Recommended review order:
 
 ```text
 01_option_pricing_foundations.ipynb
@@ -923,217 +622,190 @@ Run the notebooks sequentially:
 09_final_evaluation.ipynb
 ```
 
-The production dataset is generated, and Notebooks 01–07 have been executed in their latest load-mode configuration. Notebooks 04–07 were also revalidated on CPU with `FORCE_TRAIN = False` after the shared artifact-management and evaluation utilities were moved into `src/`. Notebook 08 and Notebook 09 remain the final integration, cross-model evaluation, and project-synthesis stages.
-
----
-
-## Generated data, trained models, DVC, and Git policy
-
-Large generated datasets, checkpoints, and experiment outputs are intentionally excluded from ordinary Git tracking. They are versioned through **DVC**, while GitHub stores only the lightweight `.dvc` pointer files and project configuration.
-
-A normal Git clone therefore contains the code and metadata, but not the large binary assets.
-
-### Required download after cloning
+### Regenerate the full dataset
 
 ```bash
-dvc pull
+python scripts/generate_production_dataset.py
 ```
 
-This command uses the public read-only DVC remote configured in `.dvc/config` and restores the exact dataset and trained-model versions referenced by the current Git commit.
+The script is component-restartable and writes the complete generation manifest only after all six components are present and verified.
 
-No credentials are required for public downloading.
-
-The project author publishes new or updated assets through a separate authenticated write remote. Access keys and secret keys are stored only in local DVC configuration and are never committed to GitHub.
-
-DVC-managed paths include:
-
-```text
-data/generated/
-artifacts/direct_mlp/
-artifacts/premium_models/
-artifacts/multitask_model/
-artifacts/neural_lsm/
-artifacts/final_multihead/
-```
-
-Typical additional ignored paths include:
-
-```text
-data/processed/
-models/
-checkpoints/
-runs/
-.dvc/cache/
-.dvc/tmp/
-```
-
-Small metadata files remain tracked directly in Git:
-
-```text
-.dvc/config
-.dvcignore
-data/generated.dvc
-artifacts/*.dvc
-data/manifests/
-references/
-docs/
-```
-
-The production dataset is stored as multiple Parquet chunks rather than one monolithic file. This keeps generation restartable, constrains memory use, and supports scalable training-data loading.
-
-Dataset manifests record:
-
-- generation configuration;
-- random seeds;
-- pricing-engine settings;
-- parameter ranges;
-- tree resolution;
-- component sizes;
-- chunk sizes;
-- split counts;
-- validation results.
-
-### Reviewer verification
-
-After cloning and running `dvc pull`, a reviewer can verify the local state with:
+### Validate the final production package
 
 ```bash
-dvc status
+python scripts/validate_production_project.py --deep
 ```
 
-A clean result means that the local data and artifact directories match the versions referenced by Git and DVC.
+### Rebuild consolidated final results
 
----
-
-## Academic writing and citation policy
-
-The project is structured as an academic paper, not only as a software demonstration.
-
-Each notebook includes:
-
-- motivation and research context;
-- mathematical definitions;
-- literature citations;
-- methodological justification;
-- code and outputs;
-- interpretation;
-- comparison with prior work;
-- limitations;
-- conclusions.
-
-The notebook remains the executable source of truth. Markdown twins under `docs/` make the research easier to read directly on GitHub.
-
-The bibliography is maintained under:
-
-```text
-references/references.bib
-references/literature_matrix.md
-references/citation_audit.md
+```bash
+python scripts/build_final_results.py --strict
 ```
 
-The literature review covers direct supervised pricing, recurrent architectures, American-option optimal stopping, PDE-based neural methods, and volatility-surface representation.
+Notebook 09 performs additional checks before comparing models:
+
+- artifact presence and schema validation;
+- checkpoint and manifest coherence;
+- training-profile validation;
+- dependency fingerprint inventory;
+- duplicate-ID detection;
+- common static-test alignment;
+- true-target equality;
+- shared state-field equality;
+- final export readiness.
 
 ---
 
-## Project status
+## Running the tests
 
-### Completed and validated
+Run the default test suite:
 
-- project architecture and academic research design;
-- Black–Scholes call and put pricing;
-- European and American CRR pricing;
-- QuantLib cross-check and pricing diagnostics;
-- 1.45 million observation production dataset;
-- deterministic train, validation, test, boundary, and OOD components;
-- chunked, restartable, Numba-accelerated data generation;
-- DVC-managed production data and trained artifacts in public Cloudflare R2 storage;
-- reusable PyTorch datasets, loaders, checkpoints, manifests, dependency fingerprints, and shared evaluation utilities;
-- direct MLP pricing benchmark;
-- unconstrained premium, non-negative premium, and constrained floor-residual models;
-- standalone exercise classifier and multi-task price-and-exercise model;
-- GBM simulation and classical Longstaff–Schwartz;
-- amortized neural Longstaff–Schwartz continuation policy;
-- in-domain, segmented, financial-consistency, OOD, boundary, robustness, uncertainty, and runtime evaluation for Notebooks 04–07;
-- clean CPU load-mode execution of Notebooks 04–07 with `FORCE_TRAIN = False`;
-- unit and integration-test structure for pricing, data, neural models, exercise boundaries, simulation, LSM, and the final static pipeline.
+```bash
+python -m pytest -q
+```
 
-### Current research conclusions
+Run pricing-engine tests:
 
-- H1 is supported;
-- H2 is supported;
-- H3 is supported;
-- H4 is not supported;
-- the constrained floor-residual network is the strongest static pricing model tested so far;
-- the standalone classifier is preferred for the root exercise decision;
-- classical contract-specific LSM is preferred to the current amortized neural LSM implementation;
-- OOD deterioration remains material and is treated as a core limitation rather than hidden by aggregate in-domain metrics.
+```bash
+python -m pytest -q \
+    tests/test_black_scholes.py \
+    tests/test_binomial_tree.py
+```
 
-### Remaining work
+Run data and split tests:
 
-- execute and finalize Notebook 08 integrated multi-head ablations;
-- run Notebook 09 cross-model aggregation and formal H1–H6 decisions;
-- compare all final static and simulation-based models on aligned evidence;
-- complete the consolidated academic discussion, limitations, and final conclusions;
-- perform one final full training-mode validation in dependency order before submission;
-- rebuild and publish the final DVC artifact package after that validation.
+```bash
+python -m pytest -q \
+    tests/test_data_generation.py \
+    tests/test_data_splitting.py \
+    tests/test_torch_datasets.py
+```
 
-### Final architecture and reporting framework already implemented
+Run model and training tests:
 
-- Notebook 08 integrated four-head architecture;
-- Notebook 09 final-evaluation skeleton and Markdown twin;
-- artifact registry with safe pending-state handling;
-- production validation and final-results build scripts;
-- predefined H1–H6 decision framework;
-- full-project integration smoke test;
-- final-results and academic-writeup checklists.
+```bash
+python -m pytest -q \
+    tests/test_direct_pricer.py \
+    tests/test_premium_pricer.py \
+    tests/test_multitask_pricer.py \
+    tests/test_integrated_multihead_pricer.py \
+    tests/test_training_pipeline.py
+```
+
+Run simulation and Longstaff–Schwartz tests:
+
+```bash
+python -m pytest -q \
+    tests/test_gbm_simulation.py \
+    tests/test_longstaff_schwartz.py \
+    tests/test_neural_longstaff_schwartz.py \
+    tests/test_lsm_comparison.py
+```
+
+Run integration tests explicitly:
+
+```bash
+python -m pytest -q -m integration
+```
+
+The default `pytest` configuration excludes tests marked `integration` and `slow`. Full production generation and full model training are not unit-test workloads.
 
 ---
 
-## Scope limitations
+## Data and artifact access
 
-The core project deliberately excludes several realistic market features:
+Large generated data and fitted-model outputs are versioned with **DVC** and stored in a publicly readable Cloudflare R2 remote.
 
-- transaction-level American option data;
-- bid–ask microstructure;
-- stochastic volatility;
-- jumps;
-- discrete dividends;
-- transaction costs;
-- multiple correlated underlyings;
-- full implied-volatility surfaces;
-- reinforcement learning;
-- transformer architectures.
+Git tracks:
 
-These are not treated as irrelevant. They are excluded to keep the central experiment identifiable and reproducible.
+- source code;
+- notebooks;
+- technical documentation;
+- tests;
+- DVC pointer files;
+- data and experiment manifests;
+- references and bibliography.
 
-Synthetic labels inherit the assumptions and approximation errors of the pricing engine. Strong interpolation performance will not be interpreted as evidence of reliable extrapolation or real-market pricing superiority.
+DVC manages:
+
+- production Parquet datasets;
+- model checkpoints;
+- feature scalers;
+- training histories;
+- prediction files;
+- runtime results;
+- final consolidated evaluation artifacts.
+
+This separation keeps the Git repository reviewable while preserving exact reproducibility of the large assets.
+
+---
+
+## Limitations
+
+The conclusions are deliberately narrower than the full real-world option-pricing problem.
+
+- **Synthetic reference prices:** the models reproduce a high-resolution CRR pricing rule; they are not validated against traded option prices.
+- **Constant volatility:** the core experiment does not model stochastic or local volatility.
+- **Continuous dividends:** discrete dividend events are excluded.
+- **Fixed payoff family:** the trained surrogates apply to American puts under the documented assumptions, not arbitrary derivatives.
+- **Static inputs:** the models do not forecast the underlying asset or learn from market time series.
+- **Finite-tree labels:** exercise decisions and continuation values inherit CRR resolution and model assumptions.
+- **Separate path experiment:** Longstaff–Schwartz results use simulated paths and cannot be ranked directly with static models.
+- **OOD risk:** the broad in-domain range covers typical project use cases, but extrapolation into stress regimes remains unreliable.
+- **Partial financial constraints:** lower bounds are guaranteed; every possible monotonicity and no-arbitrage relationship is not.
+- **Runtime dependence:** throughput depends on hardware, process state, batch size, device, software versions, and serving design.
+- **Lifecycle cost:** the business case depends on repeated volume and the cost of generating and maintaining reference labels.
+
+These limitations are part of the result. They define where the surrogate may be used and where numerical pricing must remain authoritative.
 
 ---
 
 ## Selected references
 
-- Black, F., & Scholes, M. (1973). The pricing of options and corporate liabilities.
-- Cox, J. C., Ross, S. A., & Rubinstein, M. (1979). Option pricing: A simplified approach.
-- Longstaff, F. A., & Schwartz, E. S. (2001). Valuing American options by simulation: A simple least-squares approach.
-- Merton, R. C. (1973). Theory of rational option pricing.
-- Ding, L., Lu, E., & Cheung, K. (2025). Deep learning option pricing with market implied volatility surfaces.
-- Elbayed, Z., & Qadi El Idrissi, A. (2025). Deep learning in financial modeling: Predicting European put option prices with neural networks.
-- Ke, A., & Yang, A. (2019). Option pricing with deep learning.
-- Pimentel, R., et al. (2026). Option pricing with deep learning: A long short-term memory approach.
-- Pu, V. R. H. (2021). Pricing options using deep neural networks from a practical perspective.
-- Zouaoui, H., & Naas, M.-N. (2023). Option pricing using deep learning based on LSTM-GRU neural networks.
+- Black, F., & Scholes, M. (1973). *The Pricing of Options and Corporate Liabilities*.
+- Merton, R. C. (1973). *Theory of Rational Option Pricing*.
+- Cox, J. C., Ross, S. A., & Rubinstein, M. (1979). *Option Pricing: A Simplified Approach*.
+- Longstaff, F. A., & Schwartz, E. S. (2001). *Valuing American Options by Simulation: A Simple Least-Squares Approach*.
+- Ke, A., & Yang, A. (2019). *Option Pricing with Deep Learning*.
+- Pu, V. R. H. (2021). *Pricing Options Using Deep Neural Networks from a Practical Perspective*.
+- Zouaoui, H., & Naas, M.-N. (2023). *Option Pricing Using Deep Learning Based on LSTM-GRU Neural Networks*.
+- Ding, L., Lu, E., & Cheung, K. (2025). *Deep Learning Option Pricing with Market Implied Volatility Surfaces*.
+- Elbayed, Z., & Qadi El Idrissi, A. (2025). *Deep Learning in Financial Modeling: Predicting European Put Option Prices with Neural Networks*.
+- Pimentel, R., et al. (2026). *Option Pricing with Deep Learning: A Long Short-Term Memory Approach*.
 
-The complete and audited bibliography will be maintained in `references/references.bib`.
+The complete bibliography and literature mapping are maintained in `references/` and discussed in Notebook 01 and Notebook 09.
 
 ---
 
 ## Connection to previous work
 
-This project extends the option-pricing and hedging work developed in:
+This project extends the Black–Scholes, Greeks, and hedging work developed in:
 
 [Mathematical Foundations of Portfolio Optimization and Hedging](https://github.com/Kamend1/math_for_developers_final_project)
 
-The earlier project focused on Black–Scholes pricing, protective puts, Greeks, and convexity. The current project advances from closed-form European valuation to American optimal stopping and deep-learning surrogate models.
+The earlier project focused on closed-form European option valuation and portfolio applications. This project moves to American optimal stopping, synthetic numerical labels, deep-learning surrogates, explicit exercise decisions, and computational deployment economics.
+
+---
+
+## Project status
+
+**Complete.**
+
+The final repository includes:
+
+- nine completed research notebooks;
+- validated Black–Scholes and CRR pricing engines;
+- a 1.45 million-observation synthetic production dataset;
+- direct, residual, constrained, exercise, multi-task, neural-LSM, and integrated models;
+- common-test, segmented, financial, boundary, OOD, uncertainty, and runtime evaluation;
+- formal H1–H6 decisions;
+- final model-selection and deployment recommendations;
+- artifact lineage and readiness audits;
+- DVC-managed data and trained models;
+- unit and integration tests;
+- detailed technical documentation.
+
+The final project conclusion is contained in **Notebook 09 — Final Evaluation**.
 
 ---
 
@@ -1145,9 +817,9 @@ This project is released under the [MIT License](LICENSE).
 
 ## Author
 
-**Kamen Dimitrov**
+**Kamen Dimitrov, CFA**
 
-Finance professional, CFA charterholder, and SoftUni AI and Machine Learning Upskill Program participant.
+Finance professional and participant in the SoftUni AI and Machine Learning Upskill Program.
 
 Project repository:
 
