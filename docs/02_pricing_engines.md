@@ -212,7 +212,7 @@ The adjustment is recorded as:
 
 $$
 \mathrm{pricing\_floor\_adjustment} =
-V_A-V_A^{raw}.
+V_{A} - V_{A}^{\mathrm{raw}}.
 $$
 
 This repair is transparent. A high adjustment rate or large maximum adjustment would signal that the selected tree resolution is unsuitable.
