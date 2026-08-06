@@ -208,12 +208,14 @@ I
 ).
 $$
 
-The adjustment is recorded as:
+The `pricing_floor_adjustment` column is calculated as:
 
 $$
-\mathrm{pricing\_floor\_adjustment} =
+A_{\mathrm{floor}} =
 V_{A} - V_{A}^{\mathrm{raw}}.
 $$
+
+where $A_{\mathrm{floor}}$ denotes the adjustment applied to the raw CRR price.
 
 This repair is transparent. A high adjustment rate or large maximum adjustment would signal that the selected tree resolution is unsuitable.
 
