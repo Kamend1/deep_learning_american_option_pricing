@@ -53,8 +53,7 @@ $$
 and reconstructs the American value as
 
 $$
-\widehat V_A
-=
+\widehat V_A =
 F
 +
 K\operatorname{Softplus}(g_\theta(x)).
