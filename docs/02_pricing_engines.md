@@ -211,7 +211,7 @@ $$
 The adjustment is recorded as:
 
 $$
-\text{pricing\_floor\_adjustment} =
+\mathrm{pricing\_floor\_adjustment} =
 V_A-V_A^{raw}.
 $$
 
